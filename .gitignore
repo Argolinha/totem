@@ -1,0 +1,6 @@
+node_modules/
+venv/
+backend/storage/
+backend/vive_photobooth.db
+frontend/front.zip
+**/__pycache__/

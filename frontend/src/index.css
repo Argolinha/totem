@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none; /* interface de totem: evita seleção acidental de texto */
+}
+
+/* Botões grandes e touch-friendly, conforme requisito de usabilidade */
+.btn-touch {
+  @apply rounded-2xl px-10 py-6 text-2xl font-bold shadow-lg transition-transform active:scale-95;
+}
