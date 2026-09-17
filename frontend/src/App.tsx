@@ -1,10 +1,12 @@
 import React from "react";
+import Layout from "./layout";
 import {
   BrowserRouter,
   Routes,
   Route,
   Navigate,
 } from "react-router-dom";
+
 
 // --- Contexto e telas do Totem ---
 import { useSessionContext } from "./context/SessionContext";
@@ -34,9 +36,10 @@ import Fotos from "./admin/Fotos";
 import Config from "./admin/Config";
 import Sistema from "./admin/Sistema";
 import Relatorios from "./admin/Relatorios";
-
+import Clientes from "./admin/Clientes";
+import AdicionarCliente from "./admin/AdicionarCliente";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === "true";
-
+import Orcamentos from "./admin/Orcamentos";
 /**
  * TOTEM (Kiosk)
  * Roteador interno baseado no estado `screen` do SessionContext.
@@ -86,6 +89,14 @@ const AdminApp: React.FC = () => {
       <Route path="/impressao" element={<Impressao />} />
       <Route path="/fila" element={<Fila />} />
       <Route path="/fotos" element={<Fotos />} />
+      <Route path="/clientes" element={<Clientes />} />
+      <Route path="/orcamentos" element={<Orcamentos />} />
+      
+
+      <Route
+       path="/clientes/adicionar"
+       element={<AdicionarCliente />}
+      />  
 
       {/* Rotas ainda não implementadas → voltam para o dashboard */}
       <Route path="/relatorios" element={<Relatorios />} />
