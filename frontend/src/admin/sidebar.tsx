@@ -145,13 +145,6 @@ export default function Sidebar({ currentPath = '/admin/dashboard' }: SidebarPro
 
       </nav>
 
-      <div className="px-6 py-8 flex justify-center">
-        <img
-          src="https://placehold.co/150x150/1a1a1a/ffffff?text=Butterfly"
-          alt="Butterfly Decoration"
-          className="w-32 h-32 object-contain opacity-90 drop-shadow-md"
-        />
-      </div>
 
       <div className="p-4 border-t border-gray-100 mx-4 mb-4 rounded-xl bg-gray-50">
 
