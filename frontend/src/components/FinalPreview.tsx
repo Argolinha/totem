@@ -1,5 +1,6 @@
 import React from "react";
 import { useSessionContext } from "../context/SessionContext";
+import FrameFrame from "./frameStyles";
 
 /**
  * Tela 09 - Prévia final: mostra a foto escolhida dentro da moldura
@@ -33,9 +34,11 @@ const FinalPreview: React.FC = () => {
 
         {/* Cartão estilo polaroid */}
         <div className="fp-polaroid rounded-2xl bg-white p-3 pb-6 shadow-2xl">
-          <div className="relative aspect-[3/4] w-64 overflow-hidden rounded-lg bg-black/10 md:w-72">
-            {previewUrl && <img src={previewUrl} alt="Resultado final" className="h-full w-full object-cover" />}
-          </div>
+          <FrameFrame frameId={selectedFrame.id} thickness={12} className="w-64 md:w-72">
+            <div className="relative aspect-[3/4] w-full overflow-hidden bg-black/10">
+              {previewUrl && <img src={previewUrl} alt="Resultado final" className="h-full w-full object-cover" />}
+            </div>
+          </FrameFrame>
           <p className="mt-3 text-center text-sm font-black tracking-tight text-[#0a0714]">
             Vive <span className="text-vive-primary">AI</span>
           </p>

@@ -1,5 +1,6 @@
 import React from "react";
 import { useSessionContext, FRAMES } from "../context/SessionContext";
+import FrameFrame from "./frameStyles";
 
 /**
  * Tela 08 - Escolha da moldura do evento que será aplicada à foto final.
@@ -42,38 +43,35 @@ const FrameSelect: React.FC = () => {
           ESCOLHA SUA MOLDURA
         </h2>
 
-        <div className="flex flex-wrap items-center justify-center gap-6">
+        <div className="flex max-h-[58vh] flex-wrap items-start justify-center gap-6 overflow-y-auto px-1 py-1">
           {FRAMES.map((frame) => (
             <button
               key={frame.id}
               onClick={() => setSelectedFrame(frame)}
-              className={`frame-card group relative overflow-hidden rounded-2xl border transition-all duration-300 ${
-                selectedFrame.id === frame.id
-                  ? "border-cyan-300/70 shadow-[0_0_35px_rgba(34,211,238,0.4)] scale-105"
-                  : "border-white/15 hover:scale-105 hover:border-purple-300/50"
+              className={`frame-card group relative overflow-hidden rounded-2xl transition-all duration-300 ${
+                selectedFrame.id === frame.id ? "scale-105 ring-2 ring-cyan-300/70" : "hover:scale-105"
               }`}
             >
-              <div
-                className={`relative aspect-[3/4] w-32 overflow-hidden bg-black/40 md:w-36 ${
-                  frame.id !== "padrao" ? "border-8" : "border-2"
-                } ${frame.id === "evento1" ? "border-fuchsia-500/70" : frame.id === "evento2" ? "border-cyan-400/70" : "border-white/20"}`}
-              >
-                {previewUrl && (
-                  <img src={previewUrl} alt={frame.name} className="h-full w-full object-cover" />
-                )}
-                {selectedFrame.id === frame.id && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                    <div className="rounded-full bg-cyan-400/20 p-1.5 backdrop-blur-sm">
-                      <svg className="h-5 w-5 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
+              <FrameFrame frameId={frame.id} thickness={7} className="w-32 md:w-36">
+                <div className="relative aspect-[3/4] w-full bg-black/40">
+                  {previewUrl && (
+                    <img src={previewUrl} alt={frame.name} className="h-full w-full object-cover" />
+                  )}
+                  {selectedFrame.id === frame.id && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <div className="rounded-full bg-cyan-400/20 p-1.5 backdrop-blur-sm">
+                        <svg className="h-5 w-5 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </FrameFrame>
               <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-white/80">
                 {frame.name}
               </p>
+              <p className="text-center text-[10px] text-white/40">{frame.description}</p>
             </button>
           ))}
         </div>

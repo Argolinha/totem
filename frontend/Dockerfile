@@ -1,13 +1,39 @@
-FROM node:20-slim AS build
+# =========================
+# ETAPA 1 - BUILD DO REACT
+# =========================
+FROM node:20-alpine AS builder
+
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+
+# Copia os arquivos de dependências
+COPY package*.json ./
+
+# Instala as dependências
+RUN npm ci
+
+# Copia o restante do projeto
 COPY . .
+
+# Gera o build de produção
 RUN npm run build
 
-FROM node:20-slim
-WORKDIR /app
-RUN npm install -g serve
-COPY --from=build /app/dist ./dist
-EXPOSE 5173
-CMD ["serve", "-s", "dist", "-l", "5173"]
+
+# =========================
+# ETAPA 2 - NGINX
+# =========================
+FROM nginx:alpine
+
+# Remove configuração padrão
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copia o build do React
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Configuração do Nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Porta do container
+EXPOSE 80
+
+# Inicia o Nginx
+CMD ["nginx", "-g", "daemon off;"]

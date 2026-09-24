@@ -8,7 +8,12 @@ interface LayoutProps {
   currentPath?: string;
 }
 
-export default function Layout({ children, title, subtitle, currentPath }: LayoutProps) {
+export default function Layout({
+  children,
+  title,
+  subtitle,
+  currentPath,
+}: LayoutProps) {
   return (
     <div className="min-h-screen bg-[#F8F9FA] flex">
       <Sidebar currentPath={currentPath} />

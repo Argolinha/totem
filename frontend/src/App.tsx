@@ -1,5 +1,4 @@
 import React from "react";
-import Layout from "./layout";
 import {
   BrowserRouter,
   Routes,
@@ -7,9 +6,11 @@ import {
   Navigate,
 } from "react-router-dom";
 
-
-// --- Contexto e telas do Totem ---
+// ==========================================
+// CONTEXTO E TELAS DO TOTEM
+// ==========================================
 import { useSessionContext } from "./context/SessionContext";
+
 import Welcome from "./components/Welcome";
 import ExperienceSelect from "./components/ExperienceSelect";
 import PeopleSelect from "./components/PeopleSelect";
@@ -25,7 +26,9 @@ import ThankYou from "./components/ThankYou";
 import ErrorScreen from "./components/ErrorScreen";
 import DevScreenSwitcher from "./components/DevScreenSwitcher";
 
-// --- Telas do Admin ---
+// ==========================================
+// TELAS DO ADMIN
+// ==========================================
 import Dashboard from "./admin/Dashboard";
 import Eventos from "./admin/Eventos";
 import Efeitos from "./admin/Efeitos";
@@ -38,12 +41,16 @@ import Sistema from "./admin/Sistema";
 import Relatorios from "./admin/Relatorios";
 import Clientes from "./admin/Clientes";
 import AdicionarCliente from "./admin/AdicionarCliente";
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === "true";
 import Orcamentos from "./admin/Orcamentos";
-/**
- * TOTEM (Kiosk)
- * Roteador interno baseado no estado `screen` do SessionContext.
- */
+
+// ==========================================
+// MOCK / DESENVOLVIMENTO
+// ==========================================
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_API === "true";
+
+// ==========================================
+// TOTEM / KIOSK
+// ==========================================
 const KioskApp: React.FC = () => {
   const { screen } = useSessionContext();
 
@@ -66,60 +73,134 @@ const KioskApp: React.FC = () => {
   return (
     <div className="h-screen w-screen overflow-hidden">
       {screens[screen] ?? <Welcome />}
+
       {USE_MOCK && <DevScreenSwitcher />}
     </div>
   );
 };
 
-/**
- * ADMIN
- * Painel administrativo — rota fechada acessível apenas via /admin.
- * Todas as rotas abaixo são relativas ao prefixo /admin.
- */
+// ==========================================
+// ADMIN
+// ==========================================
 const AdminApp: React.FC = () => {
   return (
     <Routes>
-      {/* /admin → redireciona para /admin/dashboard */}
-      <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
-
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/eventos" element={<Eventos />} />
-      <Route path="/efeitos" element={<Efeitos />} />
-      <Route path="/molduras" element={<Molduras />} />
-      <Route path="/impressao" element={<Impressao />} />
-      <Route path="/fila" element={<Fila />} />
-      <Route path="/fotos" element={<Fotos />} />
-      <Route path="/clientes" element={<Clientes />} />
-      <Route path="/orcamentos" element={<Orcamentos />} />
-      
-
+      {/* /admin */}
       <Route
-       path="/clientes/adicionar"
-       element={<AdicionarCliente />}
-      />  
+        path="/"
+        element={<Navigate to="/admin/dashboard" replace />}
+      />
 
-      {/* Rotas ainda não implementadas → voltam para o dashboard */}
-      <Route path="/relatorios" element={<Relatorios />} />
-      <Route path="/config" element={<Config />} />
-      <Route path="/sistema" element={<Sistema />} />
+      {/* Dashboard */}
+      <Route
+        path="/dashboard"
+        element={<Dashboard />}
+      />
 
-      {/* Qualquer rota /admin/* inválida → volta para o dashboard */}
-      <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+      {/* Eventos */}
+      <Route
+        path="/eventos"
+        element={<Eventos />}
+      />
+
+      {/* Efeitos */}
+      <Route
+        path="/efeitos"
+        element={<Efeitos />}
+      />
+
+      {/* Molduras */}
+      <Route
+        path="/molduras"
+        element={<Molduras />}
+      />
+
+      {/* Impressão */}
+      <Route
+        path="/impressao"
+        element={<Impressao />}
+      />
+
+      {/* Fila */}
+      <Route
+        path="/fila"
+        element={<Fila />}
+      />
+
+      {/* Fotos */}
+      <Route
+        path="/fotos"
+        element={<Fotos />}
+      />
+
+      {/* Clientes */}
+      <Route
+        path="/clientes"
+        element={<Clientes />}
+      />
+
+      {/* Adicionar cliente */}
+      <Route
+        path="/clientes/adicionar"
+        element={<AdicionarCliente />}
+      />
+
+      {/* Orçamentos */}
+      <Route
+        path="/orcamentos"
+        element={<Orcamentos />}
+      />
+
+      {/* Relatórios */}
+      <Route
+        path="/relatorios"
+        element={<Relatorios />}
+      />
+
+      {/* Configuração */}
+      <Route
+        path="/config"
+        element={<Config />}
+      />
+
+      {/* Sistema */}
+      <Route
+        path="/sistema"
+        element={<Sistema />}
+      />
+
+      {/* Rota inválida dentro do admin */}
+      <Route
+        path="*"
+        element={
+          <Navigate
+            to="/admin/dashboard"
+            replace
+          />
+        }
+      />
     </Routes>
   );
 };
 
-/**
- * APP (ROOT)
- *  - /admin/*  → Painel Administrativo (rota fechada)
- *  - /*        → Totem (Kiosk)
- */
+// ==========================================
+// APP PRINCIPAL
+// ==========================================
 const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/admin/*" element={<AdminApp />} />
-        <Route path="/*" element={<KioskApp />} />
+        {/* ADMIN */}
+        <Route
+          path="/admin/*"
+          element={<AdminApp />}
+        />
+
+        {/* TOTEM */}
+        <Route
+          path="/*"
+          element={<KioskApp />}
+        />
       </Routes>
     </BrowserRouter>
   );

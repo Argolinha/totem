@@ -40,12 +40,22 @@ export const EXPERIENCES: Experience[] = [
 export interface Frame {
   id: string;
   name: string;
+  description: string;
 }
 
+// Catálogo de molduras temáticas. Cada `id` precisa ter um estilo visual
+// correspondente em `FRAME_VISUAL_STYLES` (src/components/frameStyles.tsx).
 export const FRAMES: Frame[] = [
-  { id: "padrao", name: "Padrão" },
-  { id: "evento1", name: "Evento 1" },
-  { id: "evento2", name: "Evento 2" },
+  { id: "padrao", name: "Clássica", description: "Moldura minimalista em vidro" },
+  { id: "cartoon3d", name: "Cartoon 3D", description: "Traço grosso e cores vivas" },
+  { id: "anos80", name: "Anos 80", description: "Synthwave neon retrô" },
+  { id: "anime", name: "Anime", description: "Pastel com brilhos" },
+  { id: "pb", name: "Preto & Branco", description: "Clássica em preto e branco" },
+  { id: "aquarela", name: "Aquarela", description: "Bordas em pintura aquarelada" },
+  { id: "cyberpunk", name: "Cyberpunk", description: "Neon ciano e magenta" },
+  { id: "holografico3d", name: "Holográfico 3D", description: "Efeito metálico iridescente" },
+  { id: "dourado3d", name: "Dourado 3D", description: "Moldura de luxo em relevo" },
+  { id: "festa", name: "Festa Neon", description: "Cores vibrantes de festa" },
 ];
 
 export type OutputOption = "print" | "qr" | "both";

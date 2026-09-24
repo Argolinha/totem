@@ -1,4 +1,4 @@
-import Dashboard from "./admin/Dashboard";
+import Dashboard from "./Dashboard";
 
 function App() {
   return <Dashboard />;
