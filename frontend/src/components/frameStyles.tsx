@@ -1,134 +1,257 @@
 import React from "react";
+import { Check, Sparkles, ArrowLeft } from "lucide-react";
+import { useSessionContext } from "../context/SessionContext";
 
-/**
- * Estilo visual de cada moldura cadastrada em SessionContext.tsx (FRAMES).
- * Cada entrada define o gradiente da borda, a cor do glow e um glifo de
- * canto — isso é o que faz a moldura parecer um "modelo" de verdade em vez
- * de uma borda lisa. `animated: true` liga um shift de gradiente (dá a
- * sensação de moldura "viva"/3D nas temáticas mais tecnológicas/festivas.
- */
-export interface FrameVisual {
-  border: string; // gradiente CSS aplicado como fundo do "quadro"
-  glow: string; // cor usada no box-shadow externo
-  corner?: string; // glifo decorativo nos 4 cantos
-  animated?: boolean;
-}
+const frames = [
+  {
+    id: "padrao",
+    name: "Padrão",
+  },
+  {
+    id: "evento1",
+    name: "Evento 1",
+  },
+  {
+    id: "evento2",
+    name: "Evento 2",
+  },
+];
 
-export const FRAME_VISUAL_STYLES: Record<string, FrameVisual> = {
-  padrao: {
-    border: "linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.45))",
-    glow: "rgba(255,255,255,0.22)",
-  },
-  cartoon3d: {
-    border: "linear-gradient(135deg, #ff7a18, #ffb347, #ff4d6d)",
-    glow: "rgba(255,122,24,0.55)",
-    corner: "✦",
-  },
-  anos80: {
-    border: "linear-gradient(135deg, #ff2ea6, #7c3aed, #22d3ee)",
-    glow: "rgba(236,72,153,0.55)",
-    corner: "▲",
-    animated: true,
-  },
-  anime: {
-    border: "linear-gradient(135deg, #f9a8d4, #c4b5fd, #93c5fd)",
-    glow: "rgba(196,181,253,0.5)",
-    corner: "✧",
-  },
-  pb: {
-    border: "linear-gradient(135deg, #f5f5f5, #9ca3af, #111827)",
-    glow: "rgba(255,255,255,0.18)",
-    corner: "◆",
-  },
-  aquarela: {
-    border: "linear-gradient(135deg, #a7f3d0, #93c5fd, #fbcfe8)",
-    glow: "rgba(147,197,253,0.45)",
-    corner: "❋",
-  },
-  cyberpunk: {
-    border: "linear-gradient(135deg, #22d3ee, #a855f7, #ec4899)",
-    glow: "rgba(34,211,238,0.6)",
-    corner: "⌁",
-    animated: true,
-  },
-  holografico3d: {
-    border: "linear-gradient(135deg, #a5f3fc, #f0abfc, #fde68a, #a5f3fc)",
-    glow: "rgba(240,171,252,0.55)",
-    corner: "◈",
-    animated: true,
-  },
-  dourado3d: {
-    border: "linear-gradient(135deg, #fde68a, #f59e0b, #92400e)",
-    glow: "rgba(245,158,11,0.5)",
-    corner: "✥",
-  },
-  festa: {
-    border: "linear-gradient(135deg, #f43f5e, #f59e0b, #22c55e, #3b82f6, #a855f7)",
-    glow: "rgba(244,63,94,0.5)",
-    corner: "✺",
-    animated: true,
-  },
-};
+export default function FrameSelect() {
+  const {
+    selectedFrame,
+    setSelectedFrame,
+    setScreen,
+    results,
+  } = useSessionContext();
 
-interface FrameFrameProps {
-  frameId: string;
-  children: React.ReactNode;
-  className?: string;
-  thickness?: number; // espessura da moldura em px
-}
+  const photoUrl = results?.[0];
 
-/**
- * Envolve a foto (thumbnail ou preview final) com o design real da moldura
- * selecionada: gradiente + glow + leve efeito de profundidade (inset shadow)
- * + glifos nos cantos. Use o mesmo componente em FrameSelect e FinalPreview
- * para a prévia bater exatamente com o resultado final.
- */
-const FrameFrame: React.FC<FrameFrameProps> = ({ frameId, children, className = "", thickness = 10 }) => {
-  const style = FRAME_VISUAL_STYLES[frameId] ?? FRAME_VISUAL_STYLES.padrao;
+  const handleContinue = () => {
+    if (!selectedFrame) {
+      setSelectedFrame(frames[0]);
+    }
+
+    setScreen("final-preview");
+  };
+
+  const handleBack = () => {
+    setScreen("results");
+  };
 
   return (
     <div
-      className={`frame-frame relative overflow-hidden rounded-xl ${style.animated ? "frame-frame-animated" : ""} ${className}`}
       style={{
-        padding: thickness,
-        backgroundImage: style.border,
-        backgroundSize: style.animated ? "300% 300%" : "100% 100%",
-        boxShadow: `0 0 24px ${style.glow}, inset 0 0 14px rgba(0,0,0,0.4)`,
+        minHeight: "100vh",
+        background: "#0a0714",
+        color: "#ffffff",
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "Arial, sans-serif",
       }}
     >
-      <div className="relative overflow-hidden rounded-lg bg-black/20">{children}</div>
+      {/* CABEÇALHO */}
+      <header
+        style={{
+          padding: "32px 48px 20px",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 10,
+            color: "#b8a4ff",
+            fontSize: 14,
+            fontWeight: 700,
+            letterSpacing: 2,
+            marginBottom: 14,
+          }}
+        >
+          <Sparkles size={18} />
+          IA GENERATIVA
+        </div>
 
-      {style.corner && (
-        <>
-          <span className="frame-corner frame-corner-tl">{style.corner}</span>
-          <span className="frame-corner frame-corner-tr">{style.corner}</span>
-          <span className="frame-corner frame-corner-bl">{style.corner}</span>
-          <span className="frame-corner frame-corner-br">{style.corner}</span>
-        </>
-      )}
+        <h1
+          style={{
+            margin: 0,
+            fontSize: 36,
+            fontWeight: 800,
+          }}
+        >
+          ESCOLHA SUA MOLDURA
+        </h1>
 
-      <style>{`
-        .frame-frame-animated { animation: frameGradientShift 6s ease-in-out infinite; }
-        @keyframes frameGradientShift {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        .frame-corner {
-          position: absolute;
-          font-size: 13px;
-          line-height: 1;
-          color: rgba(255,255,255,0.95);
-          text-shadow: 0 0 6px rgba(0,0,0,0.65);
-          pointer-events: none;
-        }
-        .frame-corner-tl { top: 4px; left: 4px; }
-        .frame-corner-tr { top: 4px; right: 4px; }
-        .frame-corner-bl { bottom: 4px; left: 4px; }
-        .frame-corner-br { bottom: 4px; right: 4px; }
-      `}</style>
+        <p
+          style={{
+            marginTop: 10,
+            color: "#aaa3b8",
+            fontSize: 16,
+          }}
+        >
+          Escolha uma opção para finalizar sua foto.
+        </p>
+      </header>
+
+      {/* CONTEÚDO */}
+      <main
+        style={{
+          flex: 1,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 60,
+          padding: "30px 50px",
+        }}
+      >
+        {/* FOTO */}
+        <div
+          style={{
+            width: 360,
+            height: 480,
+            borderRadius: 20,
+            overflow: "hidden",
+            background: "#15111f",
+            border: "1px solid #30283d",
+            boxShadow: "0 20px 60px rgba(0,0,0,.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt="Foto selecionada"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            <span style={{ color: "#777" }}>Foto não encontrada</span>
+          )}
+        </div>
+
+        {/* OPÇÕES */}
+        <div
+          style={{
+            width: 420,
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          {frames.map((frame) => {
+            const selected = selectedFrame?.id === frame.id;
+
+            return (
+              <button
+                key={frame.id}
+                type="button"
+                onClick={() => setSelectedFrame(frame)}
+                style={{
+                  width: "100%",
+                  padding: "22px 24px",
+                  borderRadius: 16,
+                  border: selected
+                    ? "2px solid #a78bfa"
+                    : "1px solid #342d40",
+                  background: selected ? "#211936" : "#14101d",
+                  color: "#fff",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  textAlign: "left",
+                  transition: "all .2s ease",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {frame.name}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 5,
+                      color: "#9991a7",
+                      fontSize: 13,
+                    }}
+                  >
+                    Aplicar esta opção à foto
+                  </div>
+                </div>
+
+                {selected && (
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      background: "#8b5cf6",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Check size={19} />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={handleContinue}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              padding: "18px",
+              border: 0,
+              borderRadius: 14,
+              background: "#ffffff",
+              color: "#0a0714",
+              fontSize: 16,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            CONTINUAR
+          </button>
+
+          <button
+            type="button"
+            onClick={handleBack}
+            style={{
+              width: "100%",
+              padding: "14px",
+              border: "1px solid #352d42",
+              borderRadius: 14,
+              background: "transparent",
+              color: "#aaa3b8",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <ArrowLeft size={16} />
+            VOLTAR
+          </button>
+        </div>
+      </main>
     </div>
   );
-};
-
-export default FrameFrame;
+}

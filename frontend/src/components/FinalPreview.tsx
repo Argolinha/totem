@@ -1,100 +1,239 @@
 import React from "react";
+import { ArrowLeft, Check, Sparkles } from "lucide-react";
 import { useSessionContext } from "../context/SessionContext";
-import FrameFrame from "./frameStyles";
 
-/**
- * Tela 09 - Prévia final: mostra a foto escolhida dentro da moldura
- * selecionada, estilo "polaroid" com a marca Vive AI, antes de seguir
- * para as opções de saída (imprimir / QR Code).
- */
 const FinalPreview: React.FC = () => {
-  const { results, chosenIndex, selectedFrame, setScreen } = useSessionContext();
-  const previewUrl = chosenIndex !== null ? results[chosenIndex] : results[0];
+  const { results, selectedFrame, setScreen } = useSessionContext();
+
+  const photoUrl =
+    results && results.length > 0 ? results[0] : null;
+
+  const handleContinue = () => {
+    setScreen("output-options");
+  };
+
+  const handleBack = () => {
+    setScreen("frame-select");
+  };
 
   return (
-    <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-[#06030f] p-6 text-white">
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <div className="fp-bg-glow" />
-      </div>
-
-      <button
-        onClick={() => setScreen("frame-select")}
-        aria-label="Voltar"
-        className="absolute left-6 top-6 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/80 backdrop-blur-sm transition-all hover:border-vive-primary/50 hover:bg-white/10"
+    <div
+      style={{
+        minHeight: "100vh",
+        width: "100%",
+        backgroundColor: "#0a0714",
+        color: "#ffffff",
+        fontFamily: "Arial, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* CABEÇALHO */}
+      <div
+        style={{
+          width: "100%",
+          textAlign: "center",
+          paddingTop: 30,
+          paddingBottom: 20,
+        }}
       >
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
-
-      <div className="relative z-10 flex flex-col items-center">
-        <h2 className="mb-8 text-center text-3xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-purple-200 to-cyan-200 md:text-4xl">
-          CONFIRA SEU RESULTADO
-        </h2>
-
-        {/* Cartão estilo polaroid */}
-        <div className="fp-polaroid rounded-2xl bg-white p-3 pb-6 shadow-2xl">
-          <FrameFrame frameId={selectedFrame.id} thickness={12} className="w-64 md:w-72">
-            <div className="relative aspect-[3/4] w-full overflow-hidden bg-black/10">
-              {previewUrl && <img src={previewUrl} alt="Resultado final" className="h-full w-full object-cover" />}
-            </div>
-          </FrameFrame>
-          <p className="mt-3 text-center text-sm font-black tracking-tight text-[#0a0714]">
-            Vive <span className="text-vive-primary">AI</span>
-          </p>
-          <p className="text-center text-[10px] uppercase tracking-[0.3em] text-black/40">Photobooth</p>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            color: "#b8a4ff",
+            fontSize: 14,
+            fontWeight: 700,
+            letterSpacing: 2,
+          }}
+        >
+          <Sparkles size={18} />
+          IA GENERATIVA
         </div>
 
-        <p className="mt-4 text-xs uppercase tracking-[0.3em] text-white/40">
-          Moldura: {selectedFrame.name}
-        </p>
+        <h1
+          style={{
+            margin: "12px 0 0 0",
+            fontSize: 36,
+            fontWeight: 800,
+          }}
+        >
+          SUA FOTO ESTÁ PRONTA
+        </h1>
 
-        <div className="mt-8 flex items-center gap-4">
-          <button
-            onClick={() => setScreen("camera")}
-            className="rounded-full border border-white/20 bg-white/5 px-8 py-3 text-base font-bold uppercase tracking-widest text-white/80 backdrop-blur-sm transition-all duration-300 hover:border-white/40 hover:bg-white/10"
+        <p
+          style={{
+            margin: "10px 0 0 0",
+            color: "#aaa3b8",
+            fontSize: 16,
+          }}
+        >
+          Confira a prévia antes de finalizar.
+        </p>
+      </div>
+
+      {/* CONTEÚDO */}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 60,
+          padding: "20px 50px 50px 50px",
+        }}
+      >
+        {/* FOTO */}
+        <div
+          style={{
+            position: "relative",
+            width: 430,
+            height: 570,
+            borderRadius: 22,
+            overflow: "hidden",
+            backgroundColor: "#15111f",
+            border: "1px solid #30283d",
+            boxShadow: "0 25px 70px rgba(0,0,0,0.55)",
+          }}
+        >
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt="Prévia da foto"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                display: "block",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#777777",
+                fontSize: 16,
+              }}
+            >
+              Foto não encontrada
+            </div>
+          )}
+
+          {/* BORDA VISUAL */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              borderRadius: 22,
+              pointerEvents: "none",
+              boxSizing: "border-box",
+              border:
+                selectedFrame?.id === "evento1"
+                  ? "16px solid #ffffff"
+                  : selectedFrame?.id === "evento2"
+                  ? "16px solid #8b5cf6"
+                  : "8px solid rgba(255,255,255,0.85)",
+            }}
+          />
+        </div>
+
+        {/* PAINEL DIREITO */}
+        <div
+          style={{
+            width: 380,
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+          }}
+        >
+          {/* MOLDURA */}
+          <div
+            style={{
+              padding: 24,
+              borderRadius: 18,
+              backgroundColor: "#14101d",
+              border: "1px solid #30283d",
+            }}
           >
-            Refazer
+            <div
+              style={{
+                color: "#9386aa",
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: 1.5,
+                marginBottom: 8,
+              }}
+            >
+              MOLDURA SELECIONADA
+            </div>
+
+            <div
+              style={{
+                fontSize: 24,
+                fontWeight: 800,
+              }}
+            >
+              {selectedFrame?.name || "Padrão"}
+            </div>
+          </div>
+
+          {/* CONTINUAR */}
+          <button
+            type="button"
+            onClick={handleContinue}
+            style={{
+              width: "100%",
+              padding: 19,
+              border: "none",
+              borderRadius: 14,
+              backgroundColor: "#ffffff",
+              color: "#0a0714",
+              fontSize: 16,
+              fontWeight: 800,
+              cursor: "pointer",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <Check size={19} />
+            CONTINUAR
           </button>
 
+          {/* VOLTAR */}
           <button
-            onClick={() => setScreen("output-options")}
-            className="group relative overflow-hidden rounded-full px-10 py-3 text-base font-bold uppercase tracking-widest text-white transition-all duration-300 hover:scale-105 active:scale-95"
+            type="button"
+            onClick={handleBack}
+            style={{
+              width: "100%",
+              padding: 15,
+              border: "1px solid #352d42",
+              borderRadius: 14,
+              backgroundColor: "transparent",
+              color: "#aaa3b8",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 8,
+            }}
           >
-            <span className="absolute inset-0 bg-gradient-to-r from-vive-primary via-vive-secondary to-vive-primary bg-[length:300%_100%] animate-gradient-shift rounded-full" />
-            <span className="relative z-10">CONTINUAR</span>
-            <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-20deg]" />
+            <ArrowLeft size={16} />
+            ALTERAR MOLDURA
           </button>
         </div>
       </div>
-
-      <style>{`
-        .fp-bg-glow {
-          position: absolute; inset: 0;
-          background:
-            radial-gradient(ellipse at 30% 40%, rgba(139, 92, 246, 0.15), transparent 60%),
-            radial-gradient(ellipse at 70% 60%, rgba(34, 211, 238, 0.1), transparent 50%);
-          filter: blur(60px);
-          animation: fpGlowPulse 8s ease-in-out infinite alternate;
-        }
-        @keyframes fpGlowPulse {
-          0% { opacity: 0.7; transform: scale(1); }
-          100% { opacity: 1; transform: scale(1.08); }
-        }
-        .fp-polaroid {
-          animation: fpFloat 5s ease-in-out infinite;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(168,85,247,0.25);
-        }
-        @keyframes fpFloat {
-          0%, 100% { transform: translateY(0) rotate(-1deg); }
-          50% { transform: translateY(-8px) rotate(1deg); }
-        }
-        @keyframes gradient-shift {
-          0% { background-position: 0% 50%; }
-          100% { background-position: 300% 50%; }
-        }
-        .animate-gradient-shift { animation: gradient-shift 3s linear infinite; }
-      `}</style>
     </div>
   );
 };

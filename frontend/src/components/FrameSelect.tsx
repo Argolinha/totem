@@ -1,119 +1,257 @@
 import React from "react";
-import { useSessionContext, FRAMES } from "../context/SessionContext";
-import FrameFrame from "./frameStyles";
+import { Check, Sparkles, ArrowLeft } from "lucide-react";
+import { useSessionContext } from "../context/SessionContext";
 
-/**
- * Tela 08 - Escolha da moldura do evento que será aplicada à foto final.
- * Mesmo design system: fundo tecnológico, cards glassmorphism com anel
- * giratório, preview da foto escolhida dentro de cada moldura.
- */
+const frames = [
+  {
+    id: "padrao",
+    name: "Padrão",
+  },
+  {
+    id: "evento1",
+    name: "Evento 1",
+  },
+  {
+    id: "evento2",
+    name: "Evento 2",
+  },
+];
+
 const FrameSelect: React.FC = () => {
-  const { results, chosenIndex, selectedFrame, setSelectedFrame, setScreen } = useSessionContext();
+  const {
+    selectedFrame,
+    setSelectedFrame,
+    setScreen,
+    results,
+  } = useSessionContext();
 
-  const previewUrl = chosenIndex !== null ? results[chosenIndex] : results[0];
+  const photoUrl = results?.[0];
 
   const handleContinue = () => {
+    if (!selectedFrame) {
+      setSelectedFrame(frames[0]);
+    }
+
     setScreen("final-preview");
   };
 
+  const handleBack = () => {
+    setScreen("results");
+  };
+
   return (
-    <div className="relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-[#06030f] p-6 text-white">
-      {/* Fundo tecnológico */}
-      <div className="pointer-events-none absolute inset-0 z-0">
-        <div className="frame-bg-glow" />
-        <div className="frame-bg-grid" />
-      </div>
-
-      {/* Botão voltar */}
-      <button
-        onClick={() => setScreen("results")}
-        aria-label="Voltar"
-        className="absolute left-6 top-6 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/80 backdrop-blur-sm transition-all hover:border-vive-primary/50 hover:bg-white/10"
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#0a0714",
+        color: "#ffffff",
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "Arial, sans-serif",
+      }}
+    >
+      <header
+        style={{
+          padding: "32px 48px 20px",
+          textAlign: "center",
+        }}
       >
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-      </button>
-
-      <div className="relative z-10 flex w-full max-w-3xl flex-col items-center">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.5em] text-white/50">
-          Vive · Photo Experience
-        </div>
-        <h2 className="mb-8 text-center text-3xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-purple-200 to-cyan-200 md:text-4xl">
-          ESCOLHA SUA MOLDURA
-        </h2>
-
-        <div className="flex max-h-[58vh] flex-wrap items-start justify-center gap-6 overflow-y-auto px-1 py-1">
-          {FRAMES.map((frame) => (
-            <button
-              key={frame.id}
-              onClick={() => setSelectedFrame(frame)}
-              className={`frame-card group relative overflow-hidden rounded-2xl transition-all duration-300 ${
-                selectedFrame.id === frame.id ? "scale-105 ring-2 ring-cyan-300/70" : "hover:scale-105"
-              }`}
-            >
-              <FrameFrame frameId={frame.id} thickness={7} className="w-32 md:w-36">
-                <div className="relative aspect-[3/4] w-full bg-black/40">
-                  {previewUrl && (
-                    <img src={previewUrl} alt={frame.name} className="h-full w-full object-cover" />
-                  )}
-                  {selectedFrame.id === frame.id && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                      <div className="rounded-full bg-cyan-400/20 p-1.5 backdrop-blur-sm">
-                        <svg className="h-5 w-5 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </FrameFrame>
-              <p className="mt-2 text-center text-xs font-semibold uppercase tracking-wide text-white/80">
-                {frame.name}
-              </p>
-              <p className="text-center text-[10px] text-white/40">{frame.description}</p>
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={handleContinue}
-          className="group relative mt-10 overflow-hidden rounded-full px-10 py-3 text-base font-bold uppercase tracking-widest text-white transition-all duration-300 hover:scale-105 active:scale-95"
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 10,
+            color: "#b8a4ff",
+            fontSize: 14,
+            fontWeight: 700,
+            letterSpacing: 2,
+            marginBottom: 14,
+          }}
         >
-          <span className="absolute inset-0 bg-gradient-to-r from-vive-primary via-vive-secondary to-vive-primary bg-[length:300%_100%] animate-gradient-shift rounded-full" />
-          <span className="relative z-10">CONTINUAR</span>
-          <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-20deg]" />
-        </button>
-      </div>
+          <Sparkles size={18} />
+          IA GENERATIVA
+        </div>
 
-      <style>{`
-        .frame-bg-glow {
-          position: absolute; inset: 0;
-          background:
-            radial-gradient(ellipse at 30% 40%, rgba(139, 92, 246, 0.15), transparent 60%),
-            radial-gradient(ellipse at 70% 60%, rgba(34, 211, 238, 0.1), transparent 50%);
-          filter: blur(60px);
-          animation: frameGlowPulse 8s ease-in-out infinite alternate;
-        }
-        @keyframes frameGlowPulse {
-          0% { opacity: 0.7; transform: scale(1); }
-          100% { opacity: 1; transform: scale(1.08); }
-        }
-        .frame-bg-grid {
-          position: absolute; inset: 0;
-          background-image:
-            linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
-          background-size: 56px 56px;
-          mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
-        }
-        .frame-card { cursor: pointer; }
-        @keyframes gradient-shift {
-          0% { background-position: 0% 50%; }
-          100% { background-position: 300% 50%; }
-        }
-        .animate-gradient-shift { animation: gradient-shift 3s linear infinite; }
-      `}</style>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: 36,
+            fontWeight: 800,
+          }}
+        >
+          ESCOLHA SUA MOLDURA
+        </h1>
+
+        <p
+          style={{
+            marginTop: 10,
+            color: "#aaa3b8",
+            fontSize: 16,
+          }}
+        >
+          Escolha uma opção para finalizar sua foto.
+        </p>
+      </header>
+
+      <main
+        style={{
+          flex: 1,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: 60,
+          padding: "30px 50px",
+        }}
+      >
+        <div
+          style={{
+            width: 360,
+            height: 480,
+            borderRadius: 20,
+            overflow: "hidden",
+            background: "#15111f",
+            border: "1px solid #30283d",
+            boxShadow: "0 20px 60px rgba(0,0,0,.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt="Foto selecionada"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+              }}
+            />
+          ) : (
+            <span style={{ color: "#777" }}>
+              Foto não encontrada
+            </span>
+          )}
+        </div>
+
+        <div
+          style={{
+            width: 420,
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          {frames.map((frame) => {
+            const selected =
+              selectedFrame?.id === frame.id;
+
+            return (
+              <button
+                key={frame.id}
+                type="button"
+                onClick={() => setSelectedFrame(frame)}
+                style={{
+                  width: "100%",
+                  padding: "22px 24px",
+                  borderRadius: 16,
+                  border: selected
+                    ? "2px solid #a78bfa"
+                    : "1px solid #342d40",
+                  background: selected
+                    ? "#211936"
+                    : "#14101d",
+                  color: "#fff",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  textAlign: "left",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {frame.name}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 5,
+                      color: "#9991a7",
+                      fontSize: 13,
+                    }}
+                  >
+                    Aplicar esta opção à foto
+                  </div>
+                </div>
+
+                {selected && (
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      background: "#8b5cf6",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Check size={19} />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={handleContinue}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              padding: "18px",
+              border: 0,
+              borderRadius: 14,
+              background: "#ffffff",
+              color: "#0a0714",
+              fontSize: 16,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            CONTINUAR
+          </button>
+
+          <button
+            type="button"
+            onClick={handleBack}
+            style={{
+              width: "100%",
+              padding: "14px",
+              border: "1px solid #352d42",
+              borderRadius: 14,
+              background: "transparent",
+              color: "#aaa3b8",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <ArrowLeft size={16} />
+            VOLTAR
+          </button>
+        </div>
+      </main>
     </div>
   );
 };

@@ -1,9 +1,7 @@
 """
 Ponto de entrada da aplicação FastAPI - Vive AI Photobooth.
-
-Rodar localmente:
-    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 """
+
 import logging
 
 from fastapi import FastAPI
@@ -11,10 +9,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.database import init_db
-from app.routes import session, download
+from app.database import init_db, SessionLocal
 
-logging.basicConfig(level=logging.INFO)
+from app.routes import session, download, admin
+
+from app.auth import ensure_default_admin
+
+
+logging.basicConfig(
+    level=logging.INFO
+)
+
 
 app = FastAPI(
     title="Vive AI Photobooth API",
@@ -22,7 +27,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS - permite que o frontend (React) acesse a API
+
+# ============================================================
+# CORS
+# ============================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -31,25 +40,88 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve as imagens originais e geradas como arquivos estáticos
-app.mount("/static/original", StaticFiles(directory=str(settings.ORIGINAL_DIR)), name="original")
-app.mount("/static/generated", StaticFiles(directory=str(settings.GENERATED_DIR)), name="generated")
 
-app.include_router(session.router)
-app.include_router(download.router)
+# ============================================================
+# DIRETÓRIOS ESTÁTICOS
+# ============================================================
 
+app.mount(
+    "/static/original",
+    StaticFiles(
+        directory=str(
+            settings.ORIGINAL_DIR
+        )
+    ),
+    name="original",
+)
+
+
+app.mount(
+    "/static/generated",
+    StaticFiles(
+        directory=str(
+            settings.GENERATED_DIR
+        )
+    ),
+    name="generated",
+)
+
+
+# ============================================================
+# ROTAS
+# ============================================================
+
+app.include_router(
+    session.router
+)
+
+app.include_router(
+    download.router
+)
+
+app.include_router(
+    admin.router
+)
+
+
+# ============================================================
+# STARTUP
+# ============================================================
 
 @app.on_event("startup")
 def on_startup():
-    init_db()
-    logging.info("Vive AI Photobooth API iniciada. Provedor de IA: %s", settings.AI_PROVIDER)
 
+    # Cria as tabelas
+    init_db()
+
+    # Cria administrador padrão
+    db = SessionLocal()
+
+    try:
+        ensure_default_admin(db)
+    finally:
+        db.close()
+
+    logging.info(
+        "Vive AI Photobooth API iniciada. Provedor de IA: %s",
+        settings.AI_PROVIDER,
+    )
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.get("/")
 def root():
-    return {"status": "ok", "service": "Vive AI Photobooth API"}
+    return {
+        "status": "ok",
+        "service": "Vive AI Photobooth API",
+    }
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy"
+    }

@@ -1,69 +1,85 @@
-version: "3.9"
-
 services:
+
   redis:
     image: redis:7-alpine
+    container_name: vive-ai-photobooth-redis
+    restart: unless-stopped
+
     ports:
       - "6379:6379"
 
+
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: vive-ai-photobooth-backend
+
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
-      - photos_data:/app/storage
+
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+
     environment:
-      - DATABASE_URL=sqlite:///./vive_photobooth.db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - PUBLIC_BASE_URL=http://localhost:8000
-      - AI_PROVIDER=mock
-      - CORS_ORIGINS=http://localhost:5173
+      DATABASE_URL: sqlite:////app/storage/vive_photobooth.db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+    volumes:
+      - ./backend/storage:/app/storage
+
     depends_on:
       - redis
 
-  celery-worker:
-    build: ./backend
-    command: celery -A app.celery_app worker --loglevel=info
-    volumes:
-      - ./backend:/app
-      - photos_data:/app/storage
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    container_name: vive-ai-photobooth-celery
+
+    restart: unless-stopped
+
+    env_file:
+      - ./backend/.env
+
     environment:
-      - DATABASE_URL=sqlite:///./vive_photobooth.db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - PUBLIC_BASE_URL=http://localhost:8000
-      - AI_PROVIDER=mock
+      DATABASE_URL: sqlite:////app/storage/vive_photobooth.db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+
+    volumes:
+      - ./backend/storage:/app/storage
+
     depends_on:
       - redis
       - backend
 
-  celery-beat:
-    build: ./backend
-    command: celery -A app.celery_app beat --loglevel=info
-    volumes:
-      - ./backend:/app
-      - photos_data:/app/storage
-    environment:
-      - DATABASE_URL=sqlite:///./vive_photobooth.db
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      - redis
-      - backend
+    command: >
+      celery
+      -A app.tasks
+      worker
+      --loglevel=info
+
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+
+    container_name: vive-ai-photobooth-frontend
+
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8000
+      - "5173:80"
+
+    restart: unless-stopped
+
     depends_on:
       - backend
-
-volumes:
-  photos_data:

@@ -1,17 +1,13 @@
-"""
-Rotas relacionadas ao ciclo de vida de uma sessão do totem:
-criação -> upload -> status -> resultados -> escolha -> qr code
-"""
-import shutil
-import uuid
 from pathlib import Path
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy.orm import Session as DBSession
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Session as SessionModel, Photo, SessionStatus
+from app.models import Session as SessionModel
+from app.models import SessionStatus, Photo
 from app.schemas import (
     SessionCreateRequest,
     SessionResponse,
@@ -19,151 +15,437 @@ from app.schemas import (
     ChooseImageRequest,
     ResultsResponse,
     QRCodeResponse,
-    PrinterStatusResponse,
 )
-from app.services import qr_service, printer_service
-from app.tasks import process_photo_task, print_photo_task, has_internet_connection
-
-router = APIRouter(prefix="/api", tags=["session"])
+from app.tasks import process_photo_task
 
 
-@router.post("/session", response_model=SessionResponse)
-def create_session(payload: SessionCreateRequest, db: DBSession = Depends(get_db)):
-    """Cria uma nova sessão de uso do totem."""
+router = APIRouter(
+    prefix="/api",
+    tags=["Session"],
+)
+
+
+# ============================================================
+# EFEITOS
+# ============================================================
+
+@router.get("/efeitos")
+def get_efeitos():
+    """
+    Retorna os efeitos de IA disponíveis.
+    """
+    return settings.AI_EFFECT_PROMPTS
+
+
+# ============================================================
+# MOLDURAS
+# ============================================================
+
+@router.get("/molduras")
+def get_molduras(db: Session = Depends(get_db)):
+    """
+    Retorna as molduras cadastradas.
+    """
+    try:
+        from app.models import Moldura
+
+        molduras = (
+            db.query(Moldura)
+            .order_by(Moldura.created_at.desc())
+            .all()
+        )
+
+        return [
+            {
+                "id": str(moldura.id),
+                "name": getattr(moldura, "name", ""),
+                "path": getattr(moldura, "path", ""),
+                "active": getattr(moldura, "active", True),
+            }
+            for moldura in molduras
+        ]
+
+    except Exception:
+        return []
+
+
+# ============================================================
+# CRIAR SESSÃO
+# ============================================================
+
+@router.post(
+    "/session",
+    response_model=SessionResponse,
+)
+def create_session(
+    payload: SessionCreateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Cria uma nova sessão do Totem.
+    """
+
+    people_count = getattr(
+        payload,
+        "people_count",
+        1,
+    )
+
+    if not people_count or people_count < 1:
+        people_count = 1
+
     session = SessionModel(
-        people_count=payload.people_count,
-        totem_id=payload.totem_id or settings.TOTEM_ID,
+        totem_id=settings.TOTEM_ID,
+        people_count=people_count,
         status=SessionStatus.CREATED,
     )
+
     db.add(session)
     db.commit()
     db.refresh(session)
-    return session
+
+    return SessionResponse(
+        id=str(session.id),
+        totem_id=session.totem_id,
+        people_count=session.people_count,
+        status=session.status,
+        created_at=session.created_at,
+    )
 
 
-@router.post("/session/{session_id}/upload", response_model=SessionStatusResponse)
-async def upload_photo(session_id: str, file: UploadFile = File(...), db: DBSession = Depends(get_db)):
+# ============================================================
+# UPLOAD DA FOTO
+# ============================================================
+
+@router.post("/session/{session_id}/upload")
+async def upload_photo(
+    session_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
     """
-    Recebe a fotografia original capturada pela webcam do totem.
-    Armazena localmente e dispara o processamento de IA em background (Celery).
-    Se não houver internet, a sessão fica marcada como fila offline e o
-    Celery tentará novamente automaticamente até a conexão retornar.
+    Recebe a foto original do Totem e inicia o processamento.
     """
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+
+    session = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == session_id)
+        .first()
+    )
+
     if not session:
-        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        raise HTTPException(
+            status_code=404,
+            detail="Sessão não encontrada.",
+        )
 
-    # Salva o arquivo original com nome único
-    ext = Path(file.filename).suffix or ".jpg"
-    filename = f"{session_id}_{uuid.uuid4().hex}{ext}"
-    filepath = settings.ORIGINAL_DIR / filename
+    if not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo inválido.",
+        )
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    settings.ORIGINAL_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-    photo = session.photo
-    if photo is None:
-        photo = Photo(session_id=session.id)
-        db.add(photo)
+    extension = Path(file.filename).suffix.lower()
 
-    photo.original_path = str(filepath)
-    session.status = SessionStatus.UPLOADED
+    if extension not in [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+    ]:
+        extension = ".jpg"
+
+    filename = f"{session_id}_original{extension}"
+
+    original_path = (
+        settings.ORIGINAL_DIR / filename
+    )
+
+    contents = await file.read()
+
+    if not contents:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo vazio.",
+        )
+
+    with open(original_path, "wb") as output:
+        output.write(contents)
+
+    photo = Photo(
+        session_id=session.id,
+        original_path=str(original_path),
+        generated_paths=[],
+        effect_names=[],
+        printed=False,
+    )
+
+    db.add(photo)
+
+    session.status = SessionStatus.PROCESSING
+
     db.commit()
+    db.refresh(photo)
 
-    # Se o provedor exigir internet e ela estiver ausente, marca fila offline
-    # (a própria task fará o retry/backoff automaticamente).
-    if settings.AI_PROVIDER != "mock" and not has_internet_connection():
-        session.status = SessionStatus.QUEUED_OFFLINE
-        db.commit()
+    process_photo_task.delay(
+        str(session.id)
+    )
 
-    process_photo_task.delay(session.id)
+    return {
+        "success": True,
+        "session_id": str(session.id),
+        "photo_id": str(photo.id),
+        "status": session.status,
+    }
 
-    db.refresh(session)
-    return SessionStatusResponse(id=session.id, status=session.status.value)
 
+# ============================================================
+# STATUS DA SESSÃO
+# ============================================================
 
-@router.get("/session/{session_id}/status", response_model=SessionStatusResponse)
-def get_status(session_id: str, db: DBSession = Depends(get_db)):
-    """Retorna o status atual da sessão (usado pelo frontend em polling)."""
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+@router.get(
+    "/session/{session_id}/status",
+    response_model=SessionStatusResponse,
+)
+def get_session_status(
+    session_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna o status atual do processamento.
+    """
+
+    session = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == session_id)
+        .first()
+    )
+
     if not session:
-        raise HTTPException(status_code=404, detail="Sessão não encontrada")
-
-    printer_status = None
-    if session.photo and session.photo.printer_status:
-        printer_status = session.photo.printer_status.value
+        raise HTTPException(
+            status_code=404,
+            detail="Sessão não encontrada.",
+        )
 
     return SessionStatusResponse(
-        id=session.id,
-        status=session.status.value,
+        id=str(session.id),
+        status=session.status,
         error_message=session.error_message,
-        printer_status=printer_status,
     )
 
 
-@router.get("/session/{session_id}/results", response_model=ResultsResponse)
-def get_results(session_id: str, db: DBSession = Depends(get_db)):
-    """Retorna as 6 imagens geradas pela IA, quando prontas."""
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+# ============================================================
+# RESULTADOS
+# ============================================================
+
+@router.get(
+    "/session/{session_id}/results",
+    response_model=ResultsResponse,
+)
+def get_results(
+    session_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna as imagens geradas pela IA.
+    """
+
+    session = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == session_id)
+        .first()
+    )
+
     if not session:
-        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        raise HTTPException(
+            status_code=404,
+            detail="Sessão não encontrada.",
+        )
+
+    if not session.photo:
+        raise HTTPException(
+            status_code=404,
+            detail="Foto não encontrada.",
+        )
+
+    generated_paths = (
+        session.photo.generated_paths or []
+    )
 
     results = []
-    effect_names = []
-    if session.photo and session.photo.generated_paths:
-        results = [f"{settings.PUBLIC_BASE_URL}{p}" for p in session.photo.generated_paths]
-        effect_names = session.photo.effect_names or []
 
-    return ResultsResponse(session_id=session.id, status=session.status.value, results=results, effect_names=effect_names)
+    for path in generated_paths:
 
+        filename = (
+            str(path)
+            .replace("\\", "/")
+            .split("/")[-1]
+        )
 
-@router.post("/session/{session_id}/choose", response_model=SessionStatusResponse)
-def choose_image(session_id: str, payload: ChooseImageRequest, db: DBSession = Depends(get_db)):
-    """
-    Registra a escolha do usuário, gera o token de download e dispara
-    a impressão automática em background.
-    """
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-    if not session or not session.photo:
-        raise HTTPException(status_code=404, detail="Sessão não encontrada")
+        url = (
+            f"{settings.PUBLIC_BASE_URL}"
+            f"/static/generated/{filename}"
+        )
 
-    if session.status != SessionStatus.READY:
-        raise HTTPException(status_code=400, detail="Sessão ainda não está pronta para escolha")
+        results.append(url)
 
-    photo = session.photo
-    if not photo.generated_paths or payload.chosen_index >= len(photo.generated_paths):
-        raise HTTPException(status_code=400, detail="Índice de imagem inválido")
-
-    photo.chosen_index = payload.chosen_index
-    photo.download_token = qr_service.generate_download_token()
-    photo.download_token_expires_at = qr_service.get_token_expiration()
-    session.status = SessionStatus.CHOSEN
-    db.commit()
-
-    # Dispara a impressão automaticamente, sem intervenção do operador
-    print_photo_task.delay(session.id)
-
-    db.refresh(session)
-    return SessionStatusResponse(id=session.id, status=session.status.value)
-
-
-@router.get("/session/{session_id}/qr", response_model=QRCodeResponse)
-def get_qr_data(session_id: str, db: DBSession = Depends(get_db)):
-    """Retorna a URL de download que o frontend deve codificar em QR Code."""
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-    if not session or not session.photo or not session.photo.download_token:
-        raise HTTPException(status_code=404, detail="Nenhuma imagem escolhida para esta sessão")
-
-    photo = session.photo
-    return QRCodeResponse(
-        download_url=qr_service.build_download_url(photo.download_token),
-        token=photo.download_token,
-        expires_at=photo.download_token_expires_at,
+    return ResultsResponse(
+        session_id=str(session.id),
+        status=session.status,
+        results=results,
     )
 
 
-@router.get("/printer/status", response_model=PrinterStatusResponse)
-def printer_status(db: DBSession = Depends(get_db)):
-    """Consulta o status atual (simulado) da impressora Fujifilm ASK 400."""
-    status = printer_service.get_printer_status()
-    return PrinterStatusResponse(printer_status=status.value, printed=status.value == "completed")
+# ============================================================
+# ESCOLHER IMAGEM
+# ============================================================
+
+@router.post(
+    "/session/{session_id}/choose"
+)
+def choose_image(
+    session_id: str,
+    payload: ChooseImageRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Define qual imagem gerada foi escolhida.
+    """
+
+    session = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == session_id)
+        .first()
+    )
+
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Sessão não encontrada.",
+        )
+
+    if not session.photo:
+        raise HTTPException(
+            status_code=404,
+            detail="Foto não encontrada.",
+        )
+
+    index = getattr(
+        payload,
+        "chosen_index",
+        None,
+    )
+
+    if index is None:
+        index = getattr(
+            payload,
+            "index",
+            None,
+        )
+
+    if index is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Índice da imagem não informado.",
+        )
+
+    generated_paths = (
+        session.photo.generated_paths or []
+    )
+
+    if index < 0 or index >= len(generated_paths):
+        raise HTTPException(
+            status_code=400,
+            detail="Índice da imagem inválido.",
+        )
+
+    session.photo.chosen_index = index
+
+    db.commit()
+
+    return {
+        "success": True,
+        "session_id": str(session.id),
+        "chosen_index": index,
+    }
+
+
+# ============================================================
+# QR CODE
+# ============================================================
+
+@router.get(
+    "/session/{session_id}/qr",
+    response_model=QRCodeResponse,
+)
+def get_qr_code(
+    session_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Retorna os dados necessários para gerar
+    o QR Code de download da foto.
+    """
+
+    session = (
+        db.query(SessionModel)
+        .filter(SessionModel.id == session_id)
+        .first()
+    )
+
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Sessão não encontrada.",
+        )
+
+    if not session.photo:
+        raise HTTPException(
+            status_code=404,
+            detail="Foto não encontrada.",
+        )
+
+    token = session.photo.download_token
+
+    if not token:
+        raise HTTPException(
+            status_code=404,
+            detail="Token de download não encontrado.",
+        )
+
+    url = (
+        f"{settings.PUBLIC_BASE_URL}"
+        f"/api/download/{token}"
+    )
+
+    expires_at = datetime.utcnow() + timedelta(
+        minutes=10
+    )
+
+    return QRCodeResponse(
+        url=url,
+        download_url=url,
+        token=token,
+        expires_at=expires_at,
+    )
+
+
+# ============================================================
+# STATUS DA IMPRESSORA
+# ============================================================
+
+@router.get("/printer/status")
+def printer_status():
+    """
+    Retorna o status básico da impressora.
+    """
+
+    return {
+        "status": "ready",
+        "message": "Impressora pronta.",
+    }
