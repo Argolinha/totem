@@ -14,3 +14,5 @@ numpy<2
 opencv-python-headless>=4.10.0
 onnxruntime>=1.18.0
 insightface>=0.7.3
+# Controle da câmera DSLR via USB (libgphoto2) - só tem wheel para Linux/macOS
+gphoto2>=2.5.0; sys_platform != "win32"

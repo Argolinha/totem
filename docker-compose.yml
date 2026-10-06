@@ -32,6 +32,16 @@ services:
 
     volumes:
       - ./backend/storage:/app/storage
+      # Câmera DSLR (Nikon D5100) via USB: repassa o barramento USB inteiro
+      # para que a câmera continue acessível mesmo se for desconectada e
+      # religada (o número do dispositivo muda a cada reconexão).
+      # Só funciona com Docker rodando em host Linux (ou WSL2 + usbipd no
+      # Windows) - Docker Desktop no macOS não repassa USB.
+      - /dev/bus/usb:/dev/bus/usb
+
+    # Permite ao container abrir dispositivos USB (major 189).
+    device_cgroup_rules:
+      - "c 189:* rmw"
 
     depends_on:
       - redis
