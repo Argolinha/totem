@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionContext } from "../context/SessionContext";
-import { photoboothApi, cameraPreviewUrl } from "../api/client";
+import { photoboothApi, cameraStreamUrl } from "../api/client";
 
-const PREVIEW_POLL_INTERVAL_MS = 800;
+const STREAM_RETRY_MS = 2000;
 const CAMERA_STATUS_RETRY_MS = 5000;
 
 const CameraCapture: React.FC = () => {
@@ -12,23 +12,28 @@ const CameraCapture: React.FC = () => {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // Conexão com a câmera DSLR (gphoto2, no backend) - null enquanto ainda
+  // Conexão com a câmera DSLR (libgphoto2, no backend) - null enquanto ainda
   // não checou pela primeira vez.
   const [cameraConnected, setCameraConnected] = useState<boolean | null>(null);
-  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [streamSrc, setStreamSrc] = useState<string | null>(null);
+  const streamRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Checa se a DSLR está conectada ao ligar a tela, e tenta de novo
-  // periodicamente enquanto não encontrar (ex.: câmera ligada depois).
+  // periodicamente (ex.: câmera ligada depois, ou desconectada no meio).
   useEffect(() => {
     let cancelled = false;
 
     const checkStatus = async () => {
       try {
-        const { connected } = await photoboothApi.getCameraStatus();
-        if (!cancelled) setCameraConnected(connected);
+        const { connected, error } = await photoboothApi.getCameraStatus();
+        if (cancelled) return;
+        setCameraConnected(connected);
+        setCameraError(connected ? null : error ?? null);
       } catch {
-        if (!cancelled) setCameraConnected(false);
+        if (cancelled) return;
+        setCameraConnected(false);
+        setCameraError("Não foi possível falar com o backend.");
       }
     };
 
@@ -43,30 +48,32 @@ const CameraCapture: React.FC = () => {
     };
   }, []);
 
-  // Faz polling do frame de preview ao vivo (gphoto2 não expõe stream de
-  // vídeo contínuo - cada frame novo é uma captura de preview separada).
-  // Pausa durante a contagem regressiva/captura para não disputar a câmera
-  // com a captura em resolução total.
+  // Live view: o backend transmite um stream MJPEG contínuo da DSLR, que o
+  // <img> exibe direto. O stream é fechado durante a captura em resolução
+  // total para liberar a câmera.
   useEffect(() => {
-    if (!cameraConnected || countdown !== null || isCapturing) {
-      if (previewTimerRef.current) {
-        clearInterval(previewTimerRef.current);
-        previewTimerRef.current = null;
-      }
+    if (!cameraConnected || isCapturing) {
+      setStreamSrc(null);
       return;
     }
-
-    const tick = () => setPreviewSrc(cameraPreviewUrl());
-    tick();
-    previewTimerRef.current = setInterval(tick, PREVIEW_POLL_INTERVAL_MS);
-
+    setStreamSrc(cameraStreamUrl());
     return () => {
-      if (previewTimerRef.current) {
-        clearInterval(previewTimerRef.current);
-        previewTimerRef.current = null;
+      if (streamRetryRef.current) {
+        clearTimeout(streamRetryRef.current);
+        streamRetryRef.current = null;
       }
     };
-  }, [cameraConnected, countdown, isCapturing]);
+  }, [cameraConnected, isCapturing]);
+
+  // Stream caiu (câmera ocupada/desconectada): reabre depois de um tempo.
+  const handleStreamError = () => {
+    setStreamSrc(null);
+    if (streamRetryRef.current) clearTimeout(streamRetryRef.current);
+    streamRetryRef.current = setTimeout(() => {
+      streamRetryRef.current = null;
+      setStreamSrc(cameraStreamUrl());
+    }, STREAM_RETRY_MS);
+  };
 
   const capture = useCallback(async () => {
     if (!cameraConnected) return;
@@ -197,9 +204,10 @@ const CameraCapture: React.FC = () => {
         {/* 📷 PREVIEW DA DSLR COM MOLDURA E CONTAGEM */}
         <div className="relative aspect-square w-full max-w-[420px] rounded-2xl p-1 bg-gradient-to-br from-vive-primary/50 to-vive-secondary/30 shadow-2xl shadow-vive-primary/30 tech-frame">
           <div className="relative h-full w-full overflow-hidden rounded-xl bg-black/80">
-            {cameraConnected && previewSrc ? (
+            {cameraConnected && streamSrc ? (
               <img
-                src={previewSrc}
+                src={streamSrc}
+                onError={handleStreamError}
                 alt="Preview ao vivo da câmera"
                 className="h-full w-full object-cover"
               />
@@ -211,11 +219,15 @@ const CameraCapture: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
                 </svg>
                 <p className="text-sm font-semibold uppercase tracking-wide text-white/60">
-                  {cameraConnected === null ? "Procurando câmera..." : "Câmera não detectada"}
+                  {cameraConnected === null
+                    ? "Procurando câmera..."
+                    : cameraConnected
+                      ? "Iniciando live view..."
+                      : "Câmera não detectada"}
                 </p>
                 {cameraConnected === false && (
                   <p className="text-xs text-white/40">
-                    Verifique se a DSLR está ligada e conectada via USB ao totem.
+                    {cameraError || "Verifique se a DSLR está ligada e conectada via USB ao totem."}
                   </p>
                 )}
               </div>

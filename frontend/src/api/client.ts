@@ -18,6 +18,12 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localho
  */
 export const cameraPreviewUrl = (): string => `${API_BASE_URL}/api/camera/preview.jpg?t=${Date.now()}`;
 
+/**
+ * URL do live view contínuo (MJPEG) da câmera DSLR - usar direto num <img src>.
+ * O timestamp força uma conexão nova quando o stream precisa ser reaberto.
+ */
+export const cameraStreamUrl = (): string => `${API_BASE_URL}/api/camera/stream.mjpg?t=${Date.now()}`;
+
 export const MOCK_RESULT_IMAGES: string[] = [
   "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1200",
   "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=1200",
@@ -260,7 +266,7 @@ export const photoboothApi = {
   },
 
   // --- Câmera DSLR (gphoto2) ---
-  getCameraStatus: async (): Promise<{ connected: boolean; error?: string }> => {
+  getCameraStatus: async (): Promise<{ connected: boolean; model?: string | null; error?: string | null }> => {
     const { data } = await api.get("/api/camera/status");
     return data;
   },

@@ -61,6 +61,41 @@ Acesse: **http://localhost:5173**
 
 ---
 
+## Câmera DSLR (Nikon D5100)
+
+DSLRs **não aparecem como webcam** para o navegador, então o navegador nunca
+vai "reconhecer" a D5100. Quem controla a câmera é o **backend**, via USB
+(libgphoto2): ele mostra o live view (`GET /api/camera/stream.mjpg`), dispara
+o obturador e baixa a foto (`POST /api/session/{id}/capture-dslr`). O frontend
+só exibe o stream e chama esses endpoints.
+
+Na câmera:
+1. Menu de configuração → **USB** → **PTP** (não "Mass Storage").
+2. Cartão SD inserido, bateria carregada (ou fonte EP-5A).
+3. Qualidade de imagem **JPEG** (Fine/Normal) ou RAW+JPEG.
+4. Foco: AF-S com boa iluminação ou, mais confiável no totem, foco manual (chave M na lente).
+   Se o AF não acha foco, a câmera não dispara.
+5. Desligue o desligamento automático (Menu de configuração → Temporizadores de desligamento automático → Longo/Personalizado).
+
+No computador do totem (precisa ser **Linux**, ou Windows com WSL2):
+- Conecte a câmera por USB e confira no host: `lsusb | grep -i nikon`.
+- Em Linux com desktop, o sistema costuma "montar" a câmera e travá-la. Desative:
+  `systemctl --user stop gvfs-gphoto2-volume-monitor && systemctl --user mask gvfs-gphoto2-volume-monitor`
+  (ou `pkill -f gvfs-gphoto2`).
+- O `docker-compose.yml` já repassa `/dev/bus/usb` ao container do backend. Depois de `docker compose up --build`, teste:
+  `docker exec -it vive-ai-photobooth-backend gphoto2 --auto-detect` → deve listar `Nikon DSC D5100 (PTP mode)`.
+  (Pare o backend antes de rodar `gphoto2 --capture-image` manualmente, pois só um processo pode usar a câmera por vez.)
+- Status pela API: `curl http://localhost:8000/api/camera/status` → `{"connected": true, "model": "D5100", ...}`.
+  Se vier `connected: false`, o campo `error` diz o motivo (também aparece na tela de captura).
+
+**Windows:** a libgphoto2 não roda no Windows nem o Docker Desktop enxerga USB
+diretamente. Instale o [usbipd-win](https://github.com/dorssel/usbipd-win), rode
+o Docker dentro do WSL2 e anexe a câmera ao WSL (PowerShell como admin):
+`usbipd list` → `usbipd bind --busid <BUSID>` → `usbipd attach --wsl --busid <BUSID>`.
+Repita o `attach` sempre que religar a câmera.
+
+---
+
 ## Rodando localmente sem Docker
 
 ### 1. Backend

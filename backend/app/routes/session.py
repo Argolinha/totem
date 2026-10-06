@@ -2,6 +2,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -234,11 +235,7 @@ def camera_status():
     gphoto2 no backend. Usado pelo frontend para mostrar um indicador de
     conexão na tela de captura.
     """
-    try:
-        connected = camera_service.is_camera_connected()
-    except camera_service.CameraError as exc:
-        return {"connected": False, "error": str(exc)}
-    return {"connected": connected}
+    return camera_service.get_status()
 
 
 @router.get("/camera/preview.jpg")
@@ -253,7 +250,28 @@ def camera_preview():
         jpeg_bytes = camera_service.capture_preview()
     except camera_service.CameraError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    return Response(content=jpeg_bytes, media_type="image/jpeg")
+    return Response(
+        content=jpeg_bytes,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/camera/stream.mjpg")
+def camera_stream():
+    """
+    Live view contínuo da DSLR em MJPEG - basta usar a URL num <img src>.
+    Muito mais fluido que fazer polling de /camera/preview.jpg, e a câmera
+    continua disponível para /capture-dslr no meio do stream.
+    """
+    status = camera_service.get_status()
+    if not status["connected"]:
+        raise HTTPException(status_code=503, detail=status["error"] or "Câmera não conectada.")
+    return StreamingResponse(
+        camera_service.preview_stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/session/{session_id}/capture-dslr")
