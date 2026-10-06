@@ -1,19 +1,22 @@
 import React from "react";
 import { Check, Sparkles, ArrowLeft } from "lucide-react";
-import { useSessionContext } from "../context/SessionContext";
+import { useSessionContext, type Frame } from "../context/SessionContext";
 
-const frames = [
+const frames: Frame[] = [
   {
     id: "padrao",
     name: "Padrão",
+    description: "",
   },
   {
     id: "evento1",
     name: "Evento 1",
+    description: "",
   },
   {
     id: "evento2",
     name: "Evento 2",
+    description: "",
   },
 ];
 
