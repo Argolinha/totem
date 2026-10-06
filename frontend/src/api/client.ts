@@ -11,6 +11,13 @@ import axios from "axios";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
+/**
+ * Monta a URL do frame de preview ao vivo da câmera DSLR (gphoto2), com
+ * cache-busting via timestamp - cada chamada busca um frame novo na câmera,
+ * então a URL precisa mudar a cada requisição para não vir do cache do navegador.
+ */
+export const cameraPreviewUrl = (): string => `${API_BASE_URL}/api/camera/preview.jpg?t=${Date.now()}`;
+
 export const MOCK_RESULT_IMAGES: string[] = [
   "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1200",
   "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=1200",
@@ -249,6 +256,17 @@ export const photoboothApi = {
 
   getMolduras: async (): Promise<MolduraPublica[]> => {
     const { data } = await api.get("/api/molduras");
+    return data;
+  },
+
+  // --- Câmera DSLR (gphoto2) ---
+  getCameraStatus: async (): Promise<{ connected: boolean; error?: string }> => {
+    const { data } = await api.get("/api/camera/status");
+    return data;
+  },
+
+  captureDslr: async (sessionId: string): Promise<SessionStatusResponse> => {
+    const { data } = await api.post(`/api/session/${sessionId}/capture-dslr`);
     return data;
   },
 };

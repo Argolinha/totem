@@ -1,46 +1,86 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import Webcam from "react-webcam";
 import { useSessionContext } from "../context/SessionContext";
+import { photoboothApi, cameraPreviewUrl } from "../api/client";
 
-const videoConstraints = {
-  width: 1080,
-  height: 1080,
-  facingMode: "user",
-};
+const PREVIEW_POLL_INTERVAL_MS = 800;
+const CAMERA_STATUS_RETRY_MS = 5000;
 
 const CameraCapture: React.FC = () => {
-  const webcamRef = useRef<Webcam>(null);
-  const { peopleCount, startSession, submitPhoto, pollUntilReady, setScreen } =
+  const { peopleCount, startSession, captureDslrPhoto, pollUntilReady, setScreen } =
     useSessionContext();
 
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  const dataUrlToBlob = (dataUrl: string): Blob => {
-    const [header, base64] = dataUrl.split(",");
-    const mime = header.match(/:(.*?);/)![1];
-    const binary = atob(base64);
-    const array = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
-    return new Blob([array], { type: mime });
-  };
+  // Conexão com a câmera DSLR (gphoto2, no backend) - null enquanto ainda
+  // não checou pela primeira vez.
+  const [cameraConnected, setCameraConnected] = useState<boolean | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const previewTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Checa se a DSLR está conectada ao ligar a tela, e tenta de novo
+  // periodicamente enquanto não encontrar (ex.: câmera ligada depois).
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkStatus = async () => {
+      try {
+        const { connected } = await photoboothApi.getCameraStatus();
+        if (!cancelled) setCameraConnected(connected);
+      } catch {
+        if (!cancelled) setCameraConnected(false);
+      }
+    };
+
+    checkStatus();
+    const retry = setInterval(() => {
+      if (!cancelled) checkStatus();
+    }, CAMERA_STATUS_RETRY_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(retry);
+    };
+  }, []);
+
+  // Faz polling do frame de preview ao vivo (gphoto2 não expõe stream de
+  // vídeo contínuo - cada frame novo é uma captura de preview separada).
+  // Pausa durante a contagem regressiva/captura para não disputar a câmera
+  // com a captura em resolução total.
+  useEffect(() => {
+    if (!cameraConnected || countdown !== null || isCapturing) {
+      if (previewTimerRef.current) {
+        clearInterval(previewTimerRef.current);
+        previewTimerRef.current = null;
+      }
+      return;
+    }
+
+    const tick = () => setPreviewSrc(cameraPreviewUrl());
+    tick();
+    previewTimerRef.current = setInterval(tick, PREVIEW_POLL_INTERVAL_MS);
+
+    return () => {
+      if (previewTimerRef.current) {
+        clearInterval(previewTimerRef.current);
+        previewTimerRef.current = null;
+      }
+    };
+  }, [cameraConnected, countdown, isCapturing]);
 
   const capture = useCallback(async () => {
-    if (!webcamRef.current) return;
-    const imageSrc = webcamRef.current.getScreenshot();
-    if (!imageSrc) return;
+    if (!cameraConnected) return;
 
     setIsCapturing(true);
     try {
-      const blob = dataUrlToBlob(imageSrc);
       const sessionId = await startSession(peopleCount);
-      await submitPhoto(sessionId, blob);
+      await captureDslrPhoto(sessionId);
       await pollUntilReady(sessionId);
     } catch (err) {
-      console.error("Erro ao capturar/enviar foto:", err);
+      console.error("Erro ao capturar/processar foto na DSLR:", err);
       setScreen("error");
     }
-  }, [peopleCount, startSession, submitPhoto, pollUntilReady, setScreen]);
+  }, [cameraConnected, peopleCount, startSession, captureDslrPhoto, pollUntilReady, setScreen]);
 
   const startCountdown = () => {
     let counter = 3;
@@ -154,17 +194,32 @@ const CameraCapture: React.FC = () => {
           </p>
         </div>
 
-        {/* 📷 WEBCAM COM MOLDURA E CONTAGEM */}
+        {/* 📷 PREVIEW DA DSLR COM MOLDURA E CONTAGEM */}
         <div className="relative aspect-square w-full max-w-[420px] rounded-2xl p-1 bg-gradient-to-br from-vive-primary/50 to-vive-secondary/30 shadow-2xl shadow-vive-primary/30 tech-frame">
           <div className="relative h-full w-full overflow-hidden rounded-xl bg-black/80">
-            <Webcam
-              audio={false}
-              ref={webcamRef}
-              screenshotFormat="image/jpeg"
-              videoConstraints={videoConstraints}
-              mirrored
-              className="h-full w-full object-cover"
-            />
+            {cameraConnected && previewSrc ? (
+              <img
+                src={previewSrc}
+                alt="Preview ao vivo da câmera"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
+                <svg className="h-12 w-12 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
+                </svg>
+                <p className="text-sm font-semibold uppercase tracking-wide text-white/60">
+                  {cameraConnected === null ? "Procurando câmera..." : "Câmera não detectada"}
+                </p>
+                {cameraConnected === false && (
+                  <p className="text-xs text-white/40">
+                    Verifique se a DSLR está ligada e conectada via USB ao totem.
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Guias de enquadramento com estilo tecnológico */}
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-60">
@@ -189,7 +244,7 @@ const CameraCapture: React.FC = () => {
 
         {/* 🎯 BOTÃO TECNOLÓGICO PREMIUM */}
         <button
-          disabled={countdown !== null || isCapturing}
+          disabled={!cameraConnected || countdown !== null || isCapturing}
           onClick={startCountdown}
           className="group relative mt-3 overflow-hidden rounded-full px-10 py-3.5 text-base font-bold uppercase tracking-widest text-white transition-all duration-300 disabled:opacity-40 disabled:pointer-events-none hover:scale-105 active:scale-95 tech-button"
         >

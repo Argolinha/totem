@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     libjpeg-dev \
     zlib1g-dev \
+    gphoto2 \
+    libgphoto2-dev \
+    usbutils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
