@@ -21,7 +21,7 @@ formato plano de **13 colunas** exigido pelo sistema:
 
 Origem: transcrição pública [legal-nlp/oab-exams](https://github.com/legal-nlp/oab-exams)
 (licença MIT), com o gabarito oficial definitivo. As 10 questões anuladas foram
-descartadas. 17 disciplinas jurídicas, ~90 assuntos.
+descartadas. 17 disciplinas jurídicas, ~100 assuntos.
 
 **Como Disciplina e Assunto foram definidos**
 - Disciplina: nas edições I a XIV (e parte da XVIII e da XXI) vem da anotação da
