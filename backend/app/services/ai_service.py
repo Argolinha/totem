@@ -1,24 +1,6 @@
+"""Geração por provedores de IA. Erros de nuvem não viram filtros locais.
+O contrato de generate_variations é preservado para o worker Celery.
 """
-Vive AI Photobooth
-==================
-
-ORQUESTRADOR REAL DE IA
-
-Este arquivo gera variações reais da foto usando:
-
-1. fal.ai / FLUX
-2. InsightFace
-3. OpenAI Images
-4. Stability AI
-5. Pillow somente como último fallback
-
-IMPORTANTE:
-- NÃO existe mais modo "mock" neste arquivo.
-- Se um provedor de IA estiver configurado, ele será usado.
-- O Pillow só será usado quando os provedores reais não estiverem
-  disponíveis ou falharem.
-"""
-
 from __future__ import annotations
 
 import base64
@@ -26,6 +8,7 @@ import io
 import logging
 import socket
 import time
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -36,1196 +19,391 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-# ============================================================================
-# ORDEM DOS PROVEDORES
-# ============================================================================
-
-DEFAULT_CHAIN = [
-    "fal",
-    "openai",
-    "stability",
-    "insightface",
-    "local",
-]
+# Cadeia de fallback usada quando AI_PROVIDER="auto"
+DEFAULT_CHAIN = ["fal", "insightface", "openai", "stability", "local"]
 
 
-# ============================================================================
-# VERIFICAÇÃO DE INTERNET
-# ============================================================================
-
-def has_internet_connection(
-    host: str = "8.8.8.8",
-    port: int = 53,
-    timeout: float = 2.0,
-) -> bool:
+def has_internet_connection(host: str = "8.8.8.8", port: int = 53, timeout: float = 2.0) -> bool:
     try:
         socket.setdefaulttimeout(timeout)
-
-        connection = socket.socket(
-            socket.AF_INET,
-            socket.SOCK_STREAM,
-        )
-
-        connection.connect((host, port))
-        connection.close()
-
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
         return True
-
     except OSError:
         return False
 
 
-# ============================================================================
-# CENAS LOCAIS
-# ============================================================================
-
 def _effect_scene_path(efeito: dict) -> Optional[Path]:
-
     scene_file = efeito.get("scene_file")
-
     if not scene_file:
         return None
-
     path = settings.SCENES_DIR / scene_file
-
-    if path.exists():
-        return path
-
-    return None
-
-
-# ============================================================================
-# PROMPTS PROFISSIONAIS
-# ============================================================================
-
-STYLE_PROMPTS = {
-
-    "Cartoon 3D": """
-Create a high-end cinematic 3D cartoon portrait.
-Transform the person into a polished stylized 3D character.
-Keep the person's face, identity, hairstyle, expression and recognizable
-facial features.
-Use realistic 3D skin, detailed eyes, cinematic lighting,
-soft studio illumination, vibrant colors, premium animated movie quality,
-depth of field, detailed clothing and professional composition.
-Do not change the person's identity.
-""",
-
-    "Anime 3D": """
-Transform the portrait into a premium 3D anime character.
-Preserve the exact identity, facial structure, hairstyle and expression.
-Use detailed anime eyes, cinematic 3D rendering, beautiful lighting,
-high quality character design, detailed hair, polished skin,
-dramatic composition and professional Japanese animation aesthetics.
-Do not replace the person's identity.
-""",
-
-    "Anos 80": """
-Transform the portrait into a cinematic 1980s retro photograph.
-Preserve the person's identity and facial characteristics.
-Use authentic 1980s fashion, neon lights, retro studio background,
-magenta and cyan lighting, vintage film grain, analog photography,
-dramatic shadows, colorful atmosphere and nostalgic cinematic style.
-""",
-
-    "Cyberpunk": """
-Transform the person into a cinematic cyberpunk character.
-Preserve the exact facial identity.
-Use futuristic neon city lights, cyan and magenta illumination,
-rainy futuristic streets, holographic signs, technological clothing,
-cinematic atmosphere, detailed skin, realistic lighting,
-high contrast and premium science-fiction movie quality.
-""",
-
-    "Aquarela": """
-Transform the portrait into an elegant watercolor painting.
-Preserve the person's recognizable face, identity and expression.
-Use delicate watercolor brush strokes, paper texture,
-beautiful color bleeding, artistic highlights,
-soft natural colors and professional fine-art composition.
-""",
-
-    "Black & White": """
-Transform the portrait into an artistic black and white cinematic photograph.
-Preserve the exact identity and facial structure.
-Use dramatic monochrome lighting, rich shadows,
-beautiful skin texture, high dynamic range,
-professional photography, subtle film grain and timeless composition.
-""",
-
-    "Fantasia": """
-Transform the portrait into a cinematic fantasy character.
-Preserve the person's identity and facial characteristics.
-Use magical lighting, fantasy environment, glowing particles,
-epic atmosphere, detailed costume, cinematic depth,
-dramatic colors and premium fantasy movie quality.
-""",
-
-    "Super-herói": """
-Transform the portrait into a cinematic superhero character.
-Preserve the person's identity, face, hairstyle and expression.
-Use premium superhero costume design, dramatic cinematic lighting,
-powerful pose, detailed textures, atmospheric background,
-high-end blockbuster movie quality.
-""",
-
-    "Pintura Digital": """
-Transform the portrait into a premium digital painting.
-Preserve the person's identity and recognizable facial characteristics.
-Use sophisticated brushwork, detailed skin, artistic lighting,
-rich colors, cinematic composition and professional concept-art quality.
-""",
-
-    "Futurista": """
-Transform the portrait into a futuristic cinematic character.
-Preserve the exact person's identity.
-Use advanced technology, futuristic architecture,
-holographic lighting, metallic details, cinematic illumination,
-premium science-fiction visual design and highly detailed rendering.
-""",
-
-    "Fashion Editorial": """
-Transform the portrait into a luxury fashion editorial photograph.
-Preserve the person's exact identity and facial structure.
-Use professional studio lighting, luxury styling,
-high-end fashion photography, sophisticated composition,
-premium skin detail, elegant colors and magazine-quality finish.
-""",
-
-    "3D Realista": """
-Transform the portrait into a highly detailed realistic 3D character.
-Preserve the person's exact identity, face, hairstyle and expression.
-Use realistic skin, detailed eyes, realistic hair,
-cinematic studio lighting, volumetric light,
-physically based rendering and premium 3D quality.
-""",
-}
-
-
-def _get_effect_prompt(efeito: dict) -> str:
-
-    name = efeito.get("name", "Estilo AI")
-
-    custom_prompt = efeito.get("prompt")
-
-    # Se o banco tiver um prompt realmente configurado,
-    # utiliza esse prompt.
-    if custom_prompt and len(custom_prompt.strip()) > 20:
-        return custom_prompt.strip()
-
-    if name in STYLE_PROMPTS:
-        return STYLE_PROMPTS[name].strip()
-
-    return f"""
-Transform this portrait into a professional {name} visual style.
-Preserve the exact person's identity, facial structure, hairstyle
-and recognizable characteristics.
-Create a highly detailed cinematic image with professional lighting,
-high quality rendering and beautiful composition.
-"""
-
-
-# ============================================================================
-# FAL.AI / FLUX
-# ============================================================================
-
-def generate_with_fal(
-    image: Image.Image,
-    efeito: dict,
-) -> Image.Image:
-
-    api_key = getattr(settings, "FAL_KEY", None)
-
-    if not api_key:
-        raise RuntimeError(
-            "FAL_KEY não configurada."
-        )
-
-    prompt = _get_effect_prompt(efeito)
-
-    buffer = io.BytesIO()
-
-    image.convert("RGB").save(
-        buffer,
-        format="JPEG",
-        quality=95,
-    )
-
-    image_b64 = base64.b64encode(
-        buffer.getvalue()
-    ).decode("utf-8")
-
-    data_uri = (
-        f"data:image/jpeg;base64,{image_b64}"
-    )
-
-    model = getattr(
-        settings,
-        "FAL_FLUX_MODEL",
-        "fal-ai/flux/dev/image-to-image",
-    )
-
-    payload = {
-        "image_url": data_uri,
-
-        "prompt": f"""
-{prompt}
-
-IMPORTANT:
-Preserve the exact identity of the person.
-Keep the face recognizable.
-Do not replace the person.
-Do not create another person.
-The result must clearly look like the same person
-in the requested visual style.
-""",
-
-        "strength": 0.65,
-
-        "num_inference_steps": 30,
-
-        "guidance_scale": 4.0,
-    }
-
-    headers = {
-        "Authorization": f"Key {api_key}",
-        "Content-Type": "application/json",
-    }
-
-    url = f"https://queue.fal.run/{model}"
-
-    logger.info(
-        "Gerando efeito '%s' usando fal.ai / FLUX",
-        efeito.get("name"),
-    )
-
-    with httpx.Client(timeout=120.0) as client:
-
-        response = client.post(
-            url,
-            json=payload,
-            headers=headers,
-        )
-
-        response.raise_for_status()
-
-        result = response.json()
-
-        # ------------------------------------------------------------
-        # FAL ASSÍNCRONO
-        # ------------------------------------------------------------
-
-        if (
-            "status_url" in result
-            or "response_url" in result
-        ):
-
-            status_url = (
-                result.get("status_url")
-                or result.get("response_url")
-            )
-
-            response_url = (
-                result.get("response_url")
-                or status_url
-            )
-
-            completed = False
-
-            for _ in range(60):
-
-                status_response = client.get(
-                    status_url,
-                    headers=headers,
-                )
-
-                status_response.raise_for_status()
-
-                status_data = status_response.json()
-
-                status = status_data.get(
-                    "status"
-                )
-
-                if status == "COMPLETED":
-
-                    result = client.get(
-                        response_url,
-                        headers=headers,
-                    ).json()
-
-                    completed = True
-
-                    break
-
-                if status in (
-                    "FAILED",
-                    "CANCELLED",
-                ):
-                    raise RuntimeError(
-                        f"fal.ai falhou: {status}"
-                    )
-
-                time.sleep(2)
-
-            if not completed:
-                raise RuntimeError(
-                    "Tempo limite aguardando fal.ai."
-                )
-
-        # ------------------------------------------------------------
-        # IMAGEM
-        # ------------------------------------------------------------
-
-        images = result.get("images", [])
-
-        if not images:
-            raise RuntimeError(
-                f"fal.ai não retornou imagem: {result}"
-            )
-
-        image_url = images[0].get("url")
-
-        if not image_url:
-            raise RuntimeError(
-                "fal.ai retornou imagem sem URL."
-            )
-
-        image_response = client.get(
-            image_url
-        )
-
-        image_response.raise_for_status()
-
-        return Image.open(
-            io.BytesIO(
-                image_response.content
-            )
-        ).convert("RGB")
-
-
-# ============================================================================
-# OPENAI
-# ============================================================================
-
-def generate_with_openai(
-    image: Image.Image,
-    efeito: dict,
-) -> Image.Image:
-
-    api_key = getattr(
-        settings,
-        "OPENAI_API_KEY",
-        None,
-    )
-
-    if not api_key:
-        raise RuntimeError(
-            "OPENAI_API_KEY não configurada."
-        )
-
-    prompt = _get_effect_prompt(efeito)
-
-    logger.info(
-        "Gerando efeito '%s' usando OpenAI Images",
-        efeito.get("name"),
-    )
-
-    buffer = io.BytesIO()
-
-    image.convert("RGBA").save(
-        buffer,
-        format="PNG",
-    )
-
-    buffer.seek(0)
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-    }
-
-    files = {
-        "image": (
-            "original.png",
-            buffer,
-            "image/png",
-        )
-    }
-
-    image_model = getattr(
-        settings,
-        "OPENAI_IMAGE_MODEL",
-        "gpt-image-1",
-    )
-
-    data = {
-        "model": image_model,
-
-        "prompt": f"""
-Transform this portrait into the following visual style:
-
-{prompt}
-
-IMPORTANT REQUIREMENTS:
-
-- Keep the same person.
-- Preserve facial identity.
-- Preserve recognizable facial features.
-- Preserve general face shape.
-- Preserve hairstyle when compatible with the style.
-- Do not add another person.
-- Do not create a different identity.
-- Apply the requested visual transformation strongly.
-- Produce a polished professional image.
-""",
-
-        "size": "1024x1024",
-
-        "n": 1,
-    }
-
-    with httpx.Client(timeout=180.0) as client:
-
-        response = client.post(
-            "https://api.openai.com/v1/images/edits",
-            data=data,
-            files=files,
-            headers=headers,
-        )
-
-        response.raise_for_status()
-
-        result = response.json()
-
-    data_result = result.get("data", [])
-
-    if not data_result:
-        raise RuntimeError(
-            f"OpenAI não retornou imagem: {result}"
-        )
-
-    image_data = data_result[0]
-
-    if "b64_json" in image_data:
-
-        decoded = base64.b64decode(
-            image_data["b64_json"]
-        )
-
-        return Image.open(
-            io.BytesIO(decoded)
-        ).convert("RGB")
-
-    if "url" in image_data:
-
-        with httpx.Client(timeout=120.0) as client:
-
-            image_response = client.get(
-                image_data["url"]
-            )
-
-            image_response.raise_for_status()
-
-            return Image.open(
-                io.BytesIO(
-                    image_response.content
-                )
-            ).convert("RGB")
-
-    raise RuntimeError(
-        "OpenAI retornou uma resposta sem imagem."
+    return path if path.exists() else None
+
+
+# ---------------------------------------------------------------------------
+# 1) fal.ai - FLUX (image-to-image, estilo/cenário temático)
+# ---------------------------------------------------------------------------
+
+def _fal_error(response):
+    if response.status_code in (401, 403):
+        return RuntimeError("A fal.ai recusou a chave ou o acesso ao modelo. Confira FAL_KEY.")
+    if response.status_code == 402:
+        return RuntimeError("A fal.ai informou falta de saldo. Confira os créditos da conta.")
+    return RuntimeError(f"A fal.ai retornou HTTP {response.status_code}. Confira o acesso ao modelo e os logs.")
+
+
+def _queue_url(value):
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname != "queue.fal.run":
+        raise RuntimeError("A fal.ai retornou uma URL de fila inválida.")
+    return value
+
+
+def generate_with_fal(image: Image.Image, efeito: dict) -> Image.Image:
+    if not settings.FAL_KEY:
+        raise RuntimeError("Configure FAL_KEY no backend/.env para usar os efeitos de IA.")
+    model = settings.FAL_FLUX_MODEL.strip()
+    # Modelos antigos de geração não implementam a edição de retrato esperada.
+    if model in ("", "fal-ai/flux/dev", "fal-ai/flux-pro"):
+        model = "fal-ai/flux-pro/kontext"
+    if model not in ("fal-ai/flux-pro/kontext", "fal-ai/flux-pro/kontext/max"):
+        raise RuntimeError("Configure FAL_FLUX_MODEL=fal-ai/flux-pro/kontext para editar a foto capturada.")
+    buf = io.BytesIO()
+    ImageOps.exif_transpose(image).convert("RGB").save(buf, format="JPEG", quality=92)
+    data_uri = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    payload = {"image_url": data_uri, "prompt": _portrait_prompt(efeito), "num_images": 1, "output_format": "jpeg"}
+    headers = {"Authorization": f"Key {settings.FAL_KEY}"}
+    timeout = httpx.Timeout(30.0, connect=15.0)
+    logger.info("Gerando efeito %s via fal.ai, modelo %s", efeito["name"], model)
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+        try:
+            response = client.post(f"https://queue.fal.run/{model}", json=payload, headers=headers)
+            if response.is_error:
+                raise _fal_error(response)
+            data = response.json()
+            if "status_url" in data:
+                status_url = _queue_url(data["status_url"])
+                result_url = _queue_url(data["response_url"])
+                deadline = time.monotonic() + 240
+                while True:
+                    status_response = client.get(status_url, headers=headers)
+                    if status_response.is_error:
+                        raise _fal_error(status_response)
+                    status = status_response.json()
+                    if status.get("status") == "COMPLETED":
+                        result_response = client.get(result_url, headers=headers)
+                        if result_response.is_error:
+                            raise _fal_error(result_response)
+                        data = result_response.json()
+                        break
+                    if status.get("status") not in ("IN_QUEUE", "IN_PROGRESS"):
+                        raise RuntimeError("A fal.ai não concluiu a geração da imagem.")
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("A fal.ai excedeu o tempo de espera. A solicitação pode continuar na fila; confira o painel antes de refazer.")
+                    time.sleep(2)
+            if data.get("error") or not data.get("images"):
+                raise RuntimeError("A fal.ai não retornou uma imagem válida para este efeito.")
+            image_url = data["images"][0]["url"]
+            if urlparse(image_url).scheme != "https":
+                raise RuntimeError("A fal.ai retornou uma imagem inválida.")
+            # A chave fica somente nas requisições à fila, nunca no download.
+            downloaded = client.get(image_url)
+            downloaded.raise_for_status()
+            return Image.open(io.BytesIO(downloaded.content)).convert("RGB")
+        except httpx.TimeoutException as exc:
+            raise RuntimeError("A conexão com a fal.ai demorou demais. Confira a solicitação no painel antes de refazer.") from exc
+        except httpx.RequestError as exc:
+            raise RuntimeError("Não foi possível conectar à fal.ai. Confira a internet do computador.") from exc
+
+
+def _portrait_prompt(efeito):
+    return (
+        "Edit the supplied photograph into this artistic style: " + efeito["prompt"] + ". "
+        "Apply the style to the actual people and scene, not a decorative border. "
+        "Preserve the identity, facial proportions, nose, mouth, jaw, age and eye color "
+        "of every person. Keep all people present. No face replacement. "
+        "No picture frame, polaroid, border, logo, text or watermark. One full-bleed image."
     )
 
 
-# ============================================================================
-# STABILITY AI
-# ============================================================================
-
-def generate_with_stability(
-    image: Image.Image,
-    efeito: dict,
-) -> Image.Image:
-
-    api_key = getattr(
-        settings,
-        "STABILITY_API_KEY",
-        None,
-    )
-
-    if not api_key:
-        raise RuntimeError(
-            "STABILITY_API_KEY não configurada."
-        )
-
-    prompt = _get_effect_prompt(efeito)
-
-    logger.info(
-        "Gerando efeito '%s' usando Stability AI",
-        efeito.get("name"),
-    )
-
-    buffer = io.BytesIO()
-
-    image.convert("RGB").save(
-        buffer,
-        format="PNG",
-    )
-
-    buffer.seek(0)
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "image/*",
-    }
-
-    files = {
-        "image": (
-            "original.png",
-            buffer,
-            "image/png",
-        )
-    }
-
-    data = {
-        "prompt": prompt,
-
-        "mode": "image-to-image",
-
-        "strength": "0.65",
-
-        "output_format": "jpeg",
-    }
-
-    url = (
-        "https://api.stability.ai/"
-        "v2beta/stable-image/generate/sd3"
-    )
-
-    with httpx.Client(timeout=180.0) as client:
-
-        response = client.post(
-            url,
-            headers=headers,
-            files=files,
-            data=data,
-        )
-
-        response.raise_for_status()
-
-        return Image.open(
-            io.BytesIO(
-                response.content
-            )
-        ).convert("RGB")
-
-
-# ============================================================================
-# INSIGHTFACE
-# ============================================================================
+# ---------------------------------------------------------------------------
+# 2) InsightFace - troca de rosto local (ONNX), funciona 100% OFFLINE
+# ---------------------------------------------------------------------------
 
 _insightface_app = None
 _insightface_swapper = None
 
 
 def _load_insightface():
-
-    global _insightface_app
-    global _insightface_swapper
-
+    """Carrega os modelos InsightFace sob demanda (lazy) e mantém em cache no processo."""
+    global _insightface_app, _insightface_swapper
     if _insightface_app is not None:
-        return (
-            _insightface_app,
-            _insightface_swapper,
-        )
+        return _insightface_app, _insightface_swapper
 
-    import insightface
+    import insightface  # type: ignore
+    from insightface.app import FaceAnalysis  # type: ignore
 
-    from insightface.app import FaceAnalysis
+    app_ = FaceAnalysis(name=settings.INSIGHTFACE_MODEL_PACK, root=settings.INSIGHTFACE_ROOT)
+    app_.prepare(ctx_id=0, det_size=(640, 640))
 
-    app = FaceAnalysis(
-        name=settings.INSIGHTFACE_MODEL_PACK,
-        root=settings.INSIGHTFACE_ROOT,
-    )
-
-    app.prepare(
-        ctx_id=0,
-        det_size=(640, 640),
-    )
-
-    swapper_path = Path(
-        settings.INSIGHTFACE_SWAPPER_MODEL_PATH
-    )
-
+    swapper_path = Path(settings.INSIGHTFACE_SWAPPER_MODEL_PATH)
     if not swapper_path.exists():
-
         raise RuntimeError(
-            "Modelo InsightFace inswapper_128.onnx "
-            f"não encontrado em {swapper_path}"
+            f"Modelo inswapper não encontrado em {swapper_path}. "
+            "Baixe 'inswapper_128.onnx' e coloque nesse caminho para habilitar troca de rosto offline."
         )
+    swapper_ = insightface.model_zoo.get_model(str(swapper_path))
 
-    swapper = insightface.model_zoo.get_model(
-        str(swapper_path)
-    )
-
-    _insightface_app = app
-    _insightface_swapper = swapper
-
-    return (
-        _insightface_app,
-        _insightface_swapper,
-    )
+    _insightface_app, _insightface_swapper = app_, swapper_
+    return _insightface_app, _insightface_swapper
 
 
-def generate_with_insightface(
-    image: Image.Image,
-    efeito: dict,
-) -> Image.Image:
+def generate_with_insightface(image: Image.Image, efeito: dict) -> Image.Image:
+    """
+    Troca o rosto da imagem de cena temática (storage/scenes/<efeito>.jpg) pelo
+    rosto capturado no totem. Roda 100% local/offline (sem chamadas de rede) -
+    ideal como camada de geração de rosto quando não há internet.
+    """
+    if not settings.INSIGHTFACE_ENABLED:
+        raise RuntimeError("InsightFace desabilitado (INSIGHTFACE_ENABLED=false)")
 
-    if not getattr(
-        settings,
-        "INSIGHTFACE_ENABLED",
-        False,
-    ):
-        raise RuntimeError(
-            "InsightFace desabilitado."
-        )
-
-    scene_path = _effect_scene_path(
-        efeito
-    )
-
+    scene_path = _effect_scene_path(efeito)
     if scene_path is None:
+        raise RuntimeError(f"Sem imagem de cena local para o efeito '{efeito['name']}' (storage/scenes/)")
 
-        raise RuntimeError(
-            f"Não existe cena local para "
-            f"{efeito.get('name')}"
-        )
+    import cv2  # type: ignore
+    import numpy as np  # type: ignore
 
-    import cv2
-    import numpy as np
+    face_app, swapper = _load_insightface()
 
-    face_app, swapper = (
-        _load_insightface()
-    )
+    source_cv = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2BGR)
+    scene_img = Image.open(scene_path).convert("RGB")
+    target_cv = cv2.cvtColor(np.array(scene_img), cv2.COLOR_RGB2BGR)
 
-    source = cv2.cvtColor(
-        np.array(
-            image.convert("RGB")
-        ),
-        cv2.COLOR_RGB2BGR,
-    )
-
-    scene = Image.open(
-        scene_path
-    ).convert("RGB")
-
-    target = cv2.cvtColor(
-        np.array(scene),
-        cv2.COLOR_RGB2BGR,
-    )
-
-    source_faces = face_app.get(
-        source
-    )
-
-    target_faces = face_app.get(
-        target
-    )
-
+    source_faces = face_app.get(source_cv)
+    target_faces = face_app.get(target_cv)
     if not source_faces:
-
-        raise RuntimeError(
-            "Nenhum rosto encontrado na foto."
-        )
-
+        raise RuntimeError("Nenhum rosto detectado na foto original")
     if not target_faces:
+        raise RuntimeError(f"Nenhum rosto detectado na cena '{scene_path.name}'")
 
-        raise RuntimeError(
-            "Nenhum rosto encontrado na cena."
-        )
+    result_cv = target_cv.copy()
+    for tf in target_faces:
+        result_cv = swapper.get(result_cv, tf, source_faces[0], paste_back=True)
 
-    result = target.copy()
-
-    for target_face in target_faces:
-
-        result = swapper.get(
-            result,
-            target_face,
-            source_faces[0],
-            paste_back=True,
-        )
-
-    result_rgb = cv2.cvtColor(
-        result,
-        cv2.COLOR_BGR2RGB,
-    )
-
-    return Image.fromarray(
-        result_rgb
-    )
+    result_rgb = cv2.cvtColor(result_cv, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(result_rgb)
 
 
-# ============================================================================
-# FALLBACK LOCAL
-# ============================================================================
+# ---------------------------------------------------------------------------
+# 3) OpenAI (ChatGPT p/ prompt + gpt-image-1 p/ edição de imagem)
+# ---------------------------------------------------------------------------
 
-def generate_with_local(
-    image: Image.Image,
-    efeito: dict,
-) -> Image.Image:
+def _openai_refine_prompt(base_prompt: str) -> str:
+    """Usa o ChatGPT para enriquecer o prompt de estilo antes de gerar a imagem."""
+    headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}", "Content-Type": "application/json"}
+    body = {
+        "model": settings.OPENAI_TEXT_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Você é um diretor de arte. Reescreva o prompt de estilo em uma frase técnica e "
+                "vívida em inglês para um modelo de geração de imagens, preservando o pedido original.",
+            },
+            {"role": "user", "content": base_prompt},
+        ],
+        "max_tokens": 120,
+        "temperature": 0.7,
+    }
+    with httpx.Client(timeout=20.0) as client:
+        resp = client.post("https://api.openai.com/v1/chat/completions", json=body, headers=headers)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
 
-    """
-    Este NÃO é o gerador principal.
 
-    Ele existe somente para impedir que o totem fique sem resposta
-    quando todas as APIs de IA falharem.
-    """
+def generate_with_openai(image: Image.Image, efeito: dict) -> Image.Image:
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY não configurada")
 
-    name = efeito.get(
-        "name",
-        "Estilo AI",
-    )
+    prompt = _portrait_prompt(efeito)
 
-    img = image.copy().convert(
-        "RGB"
-    )
+    buf = io.BytesIO()
+    image.convert("RGBA").save(buf, format="PNG")
+    buf.seek(0)
 
-    if name in (
-        "Black & White",
-        "Preto e Branco",
-    ):
+    headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+    files = {"image": ("original.png", buf, "image/png")}
+    data = {
+        "model": settings.OPENAI_IMAGE_MODEL,
+        "prompt": prompt,
+        "size": "1024x1024",
+        "n": 1,
+    }
+    with httpx.Client(timeout=240.0) as client:
+        resp = client.post("https://api.openai.com/v1/images/edits", data=data, files=files, headers=headers)
+        resp.raise_for_status()
+        result = resp.json()
+        b64 = result["data"][0]["b64_json"]
+        return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
 
-        img = ImageOps.grayscale(
-            img
-        ).convert("RGB")
 
-    elif name in (
-        "Cartoon 3D",
-        "Cartoon",
-    ):
+# ---------------------------------------------------------------------------
+# 4) Stability AI (provedor extra opcional - mesmo contrato de plugin)
+# ---------------------------------------------------------------------------
 
-        img = img.filter(
-            ImageFilter.SMOOTH_MORE
-        )
+def generate_with_stability(image: Image.Image, efeito: dict) -> Image.Image:
+    if not settings.STABILITY_API_KEY:
+        raise RuntimeError("STABILITY_API_KEY não configurada")
 
-        img = ImageEnhance.Color(
-            img
-        ).enhance(1.8)
+    buf = io.BytesIO()
+    image.convert("RGB").save(buf, format="PNG")
+    buf.seek(0)
 
-        img = ImageEnhance.Contrast(
-            img
-        ).enhance(1.3)
+    headers = {"Authorization": f"Bearer {settings.STABILITY_API_KEY}", "Accept": "image/*"}
+    files = {"image": ("original.png", buf, "image/png")}
+    data = {"prompt": efeito["prompt"], "mode": "image-to-image", "strength": 0.55, "output_format": "jpeg"}
+    url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
 
+    with httpx.Client(timeout=60.0) as client:
+        resp = client.post(url, headers=headers, files=files, data=data)
+        resp.raise_for_status()
+        return Image.open(io.BytesIO(resp.content)).convert("RGB")
+
+
+# ---------------------------------------------------------------------------
+# 5) Motor local (Pillow) - SEMPRE disponível, 100% offline, sem custo de API.
+#    É o fallback final e também compõe o rosto sobre a cena local quando existir.
+# ---------------------------------------------------------------------------
+
+def generate_with_local(image: Image.Image, efeito: dict) -> Image.Image:
+    name = efeito["name"]
+    img = image.copy().convert("RGB")
+
+    scene_path = _effect_scene_path(efeito)
+    if scene_path is not None:
+        # Composição simples e determinística: mescla a cena temática com a foto
+        # do usuário (sem exigir detecção facial), garantindo resultado sempre
+        # disponível offline mesmo sem InsightFace instalado.
+        scene = Image.open(scene_path).convert("RGB").resize(img.size)
+        img = Image.blend(scene, img, alpha=0.55)
+
+    if name == "Cartoon":
+        img = img.filter(ImageFilter.SMOOTH_MORE)
+        img = ImageEnhance.Color(img).enhance(1.8)
+        img = ImageEnhance.Contrast(img).enhance(1.3)
     elif name == "Cyberpunk":
-
-        img = ImageEnhance.Color(
-            img
-        ).enhance(2.0)
-
+        img = ImageEnhance.Color(img).enhance(2.2)
         r, g, b = img.split()
-
-        b = ImageEnhance.Brightness(
-            b
-        ).enhance(1.5)
-
-        img = Image.merge(
-            "RGB",
-            (r, g, b),
-        )
-
-    elif name == "Aquarela":
-
-        img = img.filter(
-            ImageFilter.GaussianBlur(
-                radius=0.4
-            )
-        )
-
-        img = ImageEnhance.Color(
-            img
-        ).enhance(1.4)
-
-    elif name == "Anos 80":
-
-        img = ImageEnhance.Color(
-            img
-        ).enhance(1.8)
-
-        img = ImageEnhance.Contrast(
-            img
-        ).enhance(1.2)
-
+        b = ImageEnhance.Brightness(b).enhance(1.4)
+        img = Image.merge("RGB", (r, g, b))
     elif name == "Fantasia":
-
-        img = ImageEnhance.Color(
-            img
-        ).enhance(1.5)
-
-        img = ImageEnhance.Brightness(
-            img
-        ).enhance(1.1)
-
+        img = ImageEnhance.Brightness(img).enhance(1.15)
+        img = ImageEnhance.Color(img).enhance(1.5)
+        img = img.filter(ImageFilter.GaussianBlur(radius=0.6))
+    elif name == "Pintura a Óleo":
+        img = img.filter(ImageFilter.EDGE_ENHANCE_MORE)
+        img = img.filter(ImageFilter.SMOOTH)
+    elif name == "Espaço":
+        img = ImageOps.autocontrast(img)
+        img = ImageEnhance.Color(img).enhance(0.6)
+        img = ImageEnhance.Brightness(img).enhance(0.85)
+    elif name == "Super-herói":
+        img = ImageEnhance.Contrast(img).enhance(1.6)
+        img = ImageEnhance.Sharpness(img).enhance(2.0)
     else:
-
-        img = ImageOps.autocontrast(
-            img
-        )
+        img = ImageOps.autocontrast(img)
 
     return img
 
 
-# ============================================================================
-# PROVEDORES
-# ============================================================================
-
 PROVIDER_FUNCTIONS = {
-
     "fal": generate_with_fal,
-
-    "openai": generate_with_openai,
-
-    "stability": generate_with_stability,
-
     "insightface": generate_with_insightface,
-
+    "openai": generate_with_openai,
+    "stability": generate_with_stability,
     "local": generate_with_local,
 }
 
 
-# ============================================================================
-# SELEÇÃO DA CADEIA
-# ============================================================================
-
-def _resolve_chain(
-    efeito: dict,
-) -> List[str]:
-
-    provider = str(
-        getattr(
-            settings,
-            "AI_PROVIDER",
-            "auto",
-        )
-    ).lower().strip()
-
-    preferred = efeito.get(
-        "provider_preferido"
-    )
-
-    # ------------------------------------------------------------
-    # LOCAL
-    # ------------------------------------------------------------
-
-    if provider == "local":
-
-        return ["local"]
-
-    # ------------------------------------------------------------
-    # PROVEDOR ESPECÍFICO
-    # ------------------------------------------------------------
-
-    if provider in PROVIDER_FUNCTIONS:
-
-        chain = [provider]
-
-        if provider != "local":
-            chain.append("local")
-
-        return chain
-
-    # ------------------------------------------------------------
-    # PROVIDER AUTO
-    # ------------------------------------------------------------
-
-    if preferred in PROVIDER_FUNCTIONS:
-
-        chain = [preferred]
-
-        for item in DEFAULT_CHAIN:
-
-            if item not in chain:
-                chain.append(item)
-
-        return chain
-
-    return list(DEFAULT_CHAIN)
+def _resolve_chain(efeito: dict) -> List[str]:
+    provider = settings.AI_PROVIDER.strip().lower()
+    keys = {"fal": settings.FAL_KEY, "openai": settings.OPENAI_API_KEY, "stability": settings.STABILITY_API_KEY}
+    if provider in ("auto", "mock"):
+        preferred = efeito.get("provider_preferido")
+        order = [preferred] + ["fal", "openai", "stability"] if preferred else ["fal", "openai", "stability"]
+        chain = list(dict.fromkeys(p for p in order if keys.get(p)))
+    elif provider in keys:
+        chain = [provider] if keys[provider] else []
+    else:
+        raise RuntimeError("Os efeitos exigem IA na nuvem. Configure AI_PROVIDER=fal e FAL_KEY no backend/.env.")
+    if not chain:
+        raise RuntimeError("Nenhum provedor de IA está configurado. Configure AI_PROVIDER=fal e FAL_KEY no backend/.env.")
+    return chain
 
 
-# ============================================================================
-# GERA UMA VARIAÇÃO
-# ============================================================================
+def ensure_ai_configured(efeito):
+    _resolve_chain(efeito)
 
-def generate_single_variation(
-    image: Image.Image,
-    efeito: dict,
-    online: bool,
-) -> Tuple[Image.Image, str]:
 
-    chain = _resolve_chain(
-        efeito
-    )
-
-    last_error: Optional[
-        Exception
-    ] = None
-
-    logger.info(
-        "Efeito '%s' -> cadeia: %s",
-        efeito.get("name"),
-        chain,
-    )
-
+def generate_single_variation(image: Image.Image, efeito: dict, online: bool = True) -> Tuple[Image.Image, str]:
+    # Falha explicitamente: nunca devolve um filtro local como se fosse IA.
+    chain = _resolve_chain(efeito)
+    last_error = None
     for provider in chain:
-
-        # --------------------------------------------------------
-        # APIs externas precisam de internet
-        # --------------------------------------------------------
-
-        if (
-            provider
-            not in (
-                "local",
-                "insightface",
-            )
-            and not online
-        ):
-
-            logger.warning(
-                "Internet indisponível. "
-                "Pulando %s.",
-                provider,
-            )
-
-            continue
-
         try:
-
-            logger.info(
-                "Tentando provedor %s "
-                "para efeito %s",
-                provider,
-                efeito.get("name"),
-            )
-
-            function = PROVIDER_FUNCTIONS[
-                provider
-            ]
-
-            result = function(
-                image,
-                efeito,
-            )
-
-            logger.info(
-                "SUCESSO: efeito '%s' "
-                "gerado por %s",
-                efeito.get("name"),
-                provider,
-            )
-
-            return (
-                result,
-                provider,
-            )
-
+            return PROVIDER_FUNCTIONS[provider](image, efeito), provider
         except Exception as exc:
-
             last_error = exc
-
-            logger.exception(
-                "Provedor %s falhou "
-                "para efeito %s",
-                provider,
-                efeito.get("name"),
-            )
-
-    raise RuntimeError(
-        f"Falha ao gerar efeito "
-        f"'{efeito.get('name')}': "
-        f"{last_error}"
-    )
+            logger.warning("Falha na geração do efeito %s pelo provedor %s (%s)", efeito["name"], provider, type(exc).__name__)
+    if isinstance(last_error, RuntimeError):
+        raise last_error
+    raise RuntimeError("O provedor de IA não concluiu a geração. Confira a chave, o saldo e a conexão.") from last_error
 
 
-# ============================================================================
-# NOME DE ARQUIVO
-# ============================================================================
-
-def _sanitize_filename(
-    name: str,
-) -> str:
-
-    replacements = {
-        "á": "a",
-        "à": "a",
-        "ã": "a",
-        "â": "a",
-        "é": "e",
-        "ê": "e",
-        "í": "i",
-        "ó": "o",
-        "ô": "o",
-        "õ": "o",
-        "ú": "u",
-        "ç": "c",
-    }
-
-    result = (
-        name.lower()
-        .replace(" ", "_")
-        .replace("&", "e")
-    )
-
-    for original, replacement in (
-        replacements.items()
-    ):
-
-        result = result.replace(
-            original,
-            replacement,
-        )
-
+def _sanitize_filename(name: str) -> str:
+    replacements = {"á": "a", "à": "a", "ã": "a", "â": "a", "é": "e", "ê": "e",
+                    "í": "i", "ó": "o", "ô": "o", "õ": "o", "ú": "u", "ç": "c"}
+    result = name.lower().replace(" ", "_")
+    for a, b in replacements.items():
+        result = result.replace(a, b)
     return result
 
-
-# ============================================================================
-# GERA TODAS AS VARIAÇÕES
-# ============================================================================
 
 def generate_variations(
     original_path: Path,
     output_dir: Path,
     session_id: str,
-    efeitos: Optional[
-        List[dict]
-    ] = None,
-) -> Tuple[
-    List[str],
-    List[str],
-    List[str],
-]:
-
+    efeitos: Optional[List[dict]] = None,
+) -> Tuple[List[str], List[str], List[str]]:
     """
-    Gera todas as variações AI.
+    Ponto de entrada único usado pela task do Celery.
 
-    Retorna:
+    `efeitos`: lista de dicts {name, prompt, scene_file, provider_preferido}.
+    Se None, usa settings.AI_EFFECT_PROMPTS (fallback de compatibilidade).
 
-        caminhos_gerados
-        nomes_dos_efeitos
-        provedores_usados
+    Retorna (caminhos_gerados, nomes_dos_efeitos, provedores_usados).
     """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    image = Image.open(original_path)
+    online = True  # A conexão real ao provedor é o teste; DNS público pode estar bloqueado.
 
-    output_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    if efeitos is not None and not efeitos:
+        raise RuntimeError("Nenhum efeito selecionado.")
+    effect_list = efeitos if efeitos is not None else settings.AI_EFFECT_PROMPTS
 
-    image = Image.open(
-        original_path
-    ).convert("RGB")
+    generated_paths: List[str] = []
+    effect_names: List[str] = []
+    providers_used: List[str] = []
 
-    online = has_internet_connection()
+    for i, effect in enumerate(effect_list):
+        result_img, provider = generate_single_variation(image, effect, online)
 
-    # ------------------------------------------------------------
-    # EFEITOS
-    # ------------------------------------------------------------
+        filename = f"{session_id}_{i}_{_sanitize_filename(effect['name'])}.jpg"
+        filepath = output_dir / filename
+        result_img.convert("RGB").save(filepath, "JPEG", quality=90)
 
-    if efeitos:
+        generated_paths.append(str(filepath))
+        effect_names.append(effect["name"])
+        providers_used.append(provider)
 
-        effect_list = efeitos
-
-    else:
-
-        effect_list = []
-
-        for name, prompt in (
-            STYLE_PROMPTS.items()
-        ):
-
-            effect_list.append(
-                {
-                    "name": name,
-                    "prompt": prompt,
-                    "scene_file": None,
-                    "provider_preferido": None,
-                }
-            )
-
-    generated_paths = []
-
-    effect_names = []
-
-    providers_used = []
-
-    # ------------------------------------------------------------
-    # GERA CADA ESTILO
-    # ------------------------------------------------------------
-
-    for index, effect in enumerate(
-        effect_list
-    ):
-
-        logger.info(
-            "======================================"
-        )
-
-        logger.info(
-            "GERANDO IA %s/%s: %s",
-            index + 1,
-            len(effect_list),
-            effect.get("name"),
-        )
-
-        logger.info(
-            "======================================"
-        )
-
-        result_image, provider = (
-            generate_single_variation(
-                image,
-                effect,
-                online,
-            )
-        )
-
-        filename = (
-            f"{session_id}_"
-            f"{index}_"
-            f"{_sanitize_filename(effect['name'])}"
-            f".jpg"
-        )
-
-        filepath = (
-            output_dir / filename
-        )
-
-        result_image.convert(
-            "RGB"
-        ).save(
-            filepath,
-            "JPEG",
-            quality=92,
-        )
-
-        generated_paths.append(
-            str(filepath)
-        )
-
-        effect_names.append(
-            effect["name"]
-        )
-
-        providers_used.append(
-            provider
-        )
-
-        logger.info(
-            "Imagem salva: %s",
-            filepath,
-        )
-
-    return (
-        generated_paths,
-        effect_names,
-        providers_used,
-    )
+    return generated_paths, effect_names, providers_used

@@ -1,22 +1,22 @@
 import React from "react";
 import { Check, Sparkles, ArrowLeft } from "lucide-react";
-import { useSessionContext, type Frame } from "../context/SessionContext";
+import { useSessionContext } from "../context/SessionContext";
 
-const frames: Frame[] = [
+const frames = [
   {
     id: "padrao",
     name: "Padrão",
-    description: "",
+    description: "Moldura padrão para sua foto.",
   },
   {
     id: "evento1",
     name: "Evento 1",
-    description: "",
+    description: "Moldura especial para o evento.",
   },
   {
     id: "evento2",
     name: "Evento 2",
-    description: "",
+    description: "Moldura personalizada para o evento.",
   },
 ];
 

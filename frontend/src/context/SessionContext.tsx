@@ -29,33 +29,29 @@ export interface Experience {
 }
 
 export const EXPERIENCES: Experience[] = [
-  { id: "cyberpunk", name: "Cyberpunk", gradient: "from-fuchsia-600 via-purple-700 to-cyan-500" },
-  { id: "cartoon3d", name: "Cartoon 3D", gradient: "from-orange-400 via-amber-500 to-rose-500" },
-  { id: "anos80", name: "Anos 80", gradient: "from-pink-500 via-fuchsia-500 to-indigo-500" },
-  { id: "anime", name: "Anime", gradient: "from-violet-500 via-purple-500 to-pink-400" },
-  { id: "pb", name: "Black & White", gradient: "from-zinc-300 via-zinc-500 to-zinc-800" },
-  { id: "aquarela", name: "Aquarela", gradient: "from-sky-300 via-purple-300 to-pink-300" },
+  {"id": "cartoon3d", "name": "Cartoon 3D", "gradient": "from-fuchsia-600 via-purple-700 to-cyan-500"},
+  {"id": "anime", "name": "Anime", "gradient": "from-orange-400 via-amber-500 to-rose-500"},
+  {"id": "anos80", "name": "Anos 80", "gradient": "from-pink-500 via-fuchsia-500 to-indigo-500"},
+  {"id": "pb", "name": "Black & White", "gradient": "from-violet-500 via-purple-500 to-pink-400"},
+  {"id": "aquarela", "name": "Aquarela", "gradient": "from-zinc-300 via-zinc-500 to-zinc-800"},
+  {"id": "cyberpunk", "name": "Cyberpunk", "gradient": "from-sky-300 via-purple-300 to-pink-300"},
+  {"id": "fantasia3d", "name": "Fantasia 3D", "gradient": "from-fuchsia-600 via-purple-700 to-cyan-500"},
+  {"id": "luxo3d", "name": "Luxo 3D", "gradient": "from-orange-400 via-amber-500 to-rose-500"},
+  {"id": "galaxia", "name": "Galáxia", "gradient": "from-pink-500 via-fuchsia-500 to-indigo-500"},
+  {"id": "superheroi3d", "name": "Super-herói 3D", "gradient": "from-violet-500 via-purple-500 to-pink-400"},
+  {"id": "popart", "name": "Pop Art", "gradient": "from-zinc-300 via-zinc-500 to-zinc-800"},
+  {"id": "retrogaming", "name": "Retro Gaming", "gradient": "from-sky-300 via-purple-300 to-pink-300"},
 ];
 
 export interface Frame {
   id: string;
   name: string;
-  description: string;
 }
 
-// Catálogo de molduras temáticas. Cada `id` precisa ter um estilo visual
-// correspondente em `FRAME_VISUAL_STYLES` (src/components/frameStyles.tsx).
 export const FRAMES: Frame[] = [
-  { id: "padrao", name: "Clássica", description: "Moldura minimalista em vidro" },
-  { id: "cartoon3d", name: "Cartoon 3D", description: "Traço grosso e cores vivas" },
-  { id: "anos80", name: "Anos 80", description: "Synthwave neon retrô" },
-  { id: "anime", name: "Anime", description: "Pastel com brilhos" },
-  { id: "pb", name: "Preto & Branco", description: "Clássica em preto e branco" },
-  { id: "aquarela", name: "Aquarela", description: "Bordas em pintura aquarelada" },
-  { id: "cyberpunk", name: "Cyberpunk", description: "Neon ciano e magenta" },
-  { id: "holografico3d", name: "Holográfico 3D", description: "Efeito metálico iridescente" },
-  { id: "dourado3d", name: "Dourado 3D", description: "Moldura de luxo em relevo" },
-  { id: "festa", name: "Festa Neon", description: "Cores vibrantes de festa" },
+  { id: "padrao", name: "Padrão" },
+  { id: "evento1", name: "Evento 1" },
+  { id: "evento2", name: "Evento 2" },
 ];
 
 export type OutputOption = "print" | "qr" | "both";
@@ -85,7 +81,6 @@ interface SessionContextValue {
 
   startSession: (peopleCount: 1 | 2) => Promise<string>;
   submitPhoto: (sessionId: string, blob: Blob) => Promise<void>;
-  captureDslrPhoto: (sessionId: string) => Promise<void>;
   pollUntilReady: (sessionId: string) => Promise<void>;
   chooseResult: (index: number) => Promise<void>;
   resetFlow: () => void;
@@ -103,7 +98,7 @@ interface SessionContextValue {
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 
 const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 60000; // 60s de tolerância para a geração das 6 imagens
+const POLL_TIMEOUT_MS = 300000; // Aguarda a geração do efeito escolhido
 
 export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [screen, setScreen] = useState<Screen>("welcome");
@@ -126,69 +121,54 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const submitPhoto = useCallback(async (sid: string, blob: Blob) => {
     setScreen("processing");
-    await photoboothApi.uploadPhoto(sid, blob);
-  }, []);
+    if (!experience) throw new Error("Escolha um efeito antes de tirar a foto.");
+    setResults([]);
+    setChosenIndex(null);
+    try {
+      await photoboothApi.uploadPhoto(sid, blob, experience.id);
+    } catch (err: any) {
+      setErrorMessage(err?.response?.data?.detail || "Não foi possível enviar a foto para processamento.");
+      setScreen("error");
+      throw err;
+    }
+  }, [experience]);
 
   /**
-   * Dispara a captura na câmera DSLR conectada via USB (gphoto2, no backend)
-   * em vez de enviar um blob da webcam do navegador. Usado quando o totem
-   * está configurado com uma câmera DSLR (ex.: Nikon D5100) em vez da webcam.
-   */
-  const captureDslrPhoto = useCallback(async (sid: string) => {
-    setScreen("processing");
-    await photoboothApi.captureDslr(sid);
-  }, []);
-
-  /**
-   * Faz polling do status da sessão até que os 6 resultados estejam
+   * Faz polling do status da sessão até que o resultado esteja
    * prontos (status "ready"), tratando também os casos de fila offline
    * e erro, mantendo o usuário informado durante toda a espera.
    */
   const pollUntilReady = useCallback(async (sid: string) => {
     const startedAt = Date.now();
 
-    return new Promise<void>((resolve, reject) => {
-      const interval = setInterval(async () => {
-        try {
-          const status = await photoboothApi.getStatus(sid);
-
-          if (status.status === "ready") {
-            clearInterval(interval);
-            const res = await photoboothApi.getResults(sid);
-            setResults(res.results);
-            setEffectNames(res.effect_names);
-            setScreen("results");
-            resolve();
-            return;
-          }
-
-          if (status.status === "error") {
-            clearInterval(interval);
-            setErrorMessage(status.error_message || "Ocorreu um erro no processamento.");
-            setScreen("error");
-            reject(new Error(status.error_message || "Erro no processamento"));
-            return;
-          }
-
-          if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-            clearInterval(interval);
-            setErrorMessage(
-              status.status === "queued_offline"
-                ? "Sem conexão com a internet no momento. Sua foto foi salva e será processada assim que a conexão voltar."
-                : "O processamento está demorando mais que o esperado."
-            );
-            setScreen("error");
-            reject(new Error("timeout"));
-          }
-          // Caso contrário (uploaded/queued_offline/processing) continua aguardando
-        } catch (err) {
-          clearInterval(interval);
-          setErrorMessage("Não foi possível consultar o status da sessão.");
-          setScreen("error");
-          reject(err);
+    try {
+      while (true) {
+        const status = await photoboothApi.getStatus(sid);
+        if (status.status === "ready") {
+          const res = await photoboothApi.getResults(sid);
+          if (res.results.length !== 1) throw new Error("Era esperado somente o efeito escolhido.");
+          await photoboothApi.chooseImage(sid, 0);
+          setChosenIndex(0);
+          setResults(res.results);
+          setEffectNames(res.effect_names);
+          setScreen("final-preview");
+          return;
         }
-      }, POLL_INTERVAL_MS);
-    });
+        if (status.status === "error") {
+          throw new Error(status.error_message || "Ocorreu um erro no processamento.");
+        }
+        if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+          throw new Error(status.status === "queued_offline"
+            ? "Sem conexão com a internet. Sua foto aguarda processamento."
+            : "O processamento está demorando mais que o esperado.");
+        }
+        await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Não foi possível consultar o resultado.");
+      setScreen("error");
+      throw err;
+    }
   }, []);
 
   const chooseResult = useCallback(
@@ -196,7 +176,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (!sessionId) return;
       setChosenIndex(index);
       await photoboothApi.chooseImage(sessionId, index);
-      setScreen("frame-select");
+      setScreen("final-preview");
     },
     [sessionId]
   );
@@ -278,7 +258,6 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
         errorMessage,
         startSession,
         submitPhoto,
-        captureDslrPhoto,
         pollUntilReady,
         chooseResult,
         resetFlow,
