@@ -1,93 +1,46 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Webcam from "react-webcam";
 import { useSessionContext } from "../context/SessionContext";
-import { photoboothApi, cameraStreamUrl } from "../api/client";
 
-const STREAM_RETRY_MS = 2000;
-const CAMERA_STATUS_RETRY_MS = 5000;
+const videoConstraints = {
+  width: 1080,
+  height: 1080,
+  facingMode: "user",
+};
 
 const CameraCapture: React.FC = () => {
-  const { peopleCount, startSession, captureDslrPhoto, pollUntilReady, setScreen } =
+  const webcamRef = useRef<Webcam>(null);
+  const { peopleCount, startSession, submitPhoto, pollUntilReady, setScreen } =
     useSessionContext();
 
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
 
-  // Conexão com a câmera DSLR (libgphoto2, no backend) - null enquanto ainda
-  // não checou pela primeira vez.
-  const [cameraConnected, setCameraConnected] = useState<boolean | null>(null);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [streamSrc, setStreamSrc] = useState<string | null>(null);
-  const streamRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Checa se a DSLR está conectada ao ligar a tela, e tenta de novo
-  // periodicamente (ex.: câmera ligada depois, ou desconectada no meio).
-  useEffect(() => {
-    let cancelled = false;
-
-    const checkStatus = async () => {
-      try {
-        const { connected, error } = await photoboothApi.getCameraStatus();
-        if (cancelled) return;
-        setCameraConnected(connected);
-        setCameraError(connected ? null : error ?? null);
-      } catch {
-        if (cancelled) return;
-        setCameraConnected(false);
-        setCameraError("Não foi possível falar com o backend.");
-      }
-    };
-
-    checkStatus();
-    const retry = setInterval(() => {
-      if (!cancelled) checkStatus();
-    }, CAMERA_STATUS_RETRY_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(retry);
-    };
-  }, []);
-
-  // Live view: o backend transmite um stream MJPEG contínuo da DSLR, que o
-  // <img> exibe direto. O stream é fechado durante a captura em resolução
-  // total para liberar a câmera.
-  useEffect(() => {
-    if (!cameraConnected || isCapturing) {
-      setStreamSrc(null);
-      return;
-    }
-    setStreamSrc(cameraStreamUrl());
-    return () => {
-      if (streamRetryRef.current) {
-        clearTimeout(streamRetryRef.current);
-        streamRetryRef.current = null;
-      }
-    };
-  }, [cameraConnected, isCapturing]);
-
-  // Stream caiu (câmera ocupada/desconectada): reabre depois de um tempo.
-  const handleStreamError = () => {
-    setStreamSrc(null);
-    if (streamRetryRef.current) clearTimeout(streamRetryRef.current);
-    streamRetryRef.current = setTimeout(() => {
-      streamRetryRef.current = null;
-      setStreamSrc(cameraStreamUrl());
-    }, STREAM_RETRY_MS);
+  const dataUrlToBlob = (dataUrl: string): Blob => {
+    const [header, base64] = dataUrl.split(",");
+    const mime = header.match(/:(.*?);/)![1];
+    const binary = atob(base64);
+    const array = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+    return new Blob([array], { type: mime });
   };
 
   const capture = useCallback(async () => {
-    if (!cameraConnected) return;
+    if (!webcamRef.current) return;
+    const imageSrc = webcamRef.current.getScreenshot();
+    if (!imageSrc) return;
 
     setIsCapturing(true);
     try {
+      const blob = dataUrlToBlob(imageSrc);
       const sessionId = await startSession(peopleCount);
-      await captureDslrPhoto(sessionId);
+      await submitPhoto(sessionId, blob);
       await pollUntilReady(sessionId);
     } catch (err) {
-      console.error("Erro ao capturar/processar foto na DSLR:", err);
+      console.error("Erro ao capturar/enviar foto:", err);
       setScreen("error");
     }
-  }, [cameraConnected, peopleCount, startSession, captureDslrPhoto, pollUntilReady, setScreen]);
+  }, [peopleCount, startSession, submitPhoto, pollUntilReady, setScreen]);
 
   const startCountdown = () => {
     let counter = 3;
@@ -201,37 +154,17 @@ const CameraCapture: React.FC = () => {
           </p>
         </div>
 
-        {/* 📷 PREVIEW DA DSLR COM MOLDURA E CONTAGEM */}
+        {/* 📷 WEBCAM COM MOLDURA E CONTAGEM */}
         <div className="relative aspect-square w-full max-w-[420px] rounded-2xl p-1 bg-gradient-to-br from-vive-primary/50 to-vive-secondary/30 shadow-2xl shadow-vive-primary/30 tech-frame">
           <div className="relative h-full w-full overflow-hidden rounded-xl bg-black/80">
-            {cameraConnected && streamSrc ? (
-              <img
-                src={streamSrc}
-                onError={handleStreamError}
-                alt="Preview ao vivo da câmera"
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-3 px-6 text-center">
-                <svg className="h-12 w-12 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18" />
-                </svg>
-                <p className="text-sm font-semibold uppercase tracking-wide text-white/60">
-                  {cameraConnected === null
-                    ? "Procurando câmera..."
-                    : cameraConnected
-                      ? "Iniciando live view..."
-                      : "Câmera não detectada"}
-                </p>
-                {cameraConnected === false && (
-                  <p className="text-xs text-white/40">
-                    {cameraError || "Verifique se a DSLR está ligada e conectada via USB ao totem."}
-                  </p>
-                )}
-              </div>
-            )}
+            <Webcam
+              audio={false}
+              ref={webcamRef}
+              screenshotFormat="image/jpeg"
+              videoConstraints={videoConstraints}
+              mirrored
+              className="h-full w-full object-cover"
+            />
 
             {/* Guias de enquadramento com estilo tecnológico */}
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-60">
@@ -256,7 +189,7 @@ const CameraCapture: React.FC = () => {
 
         {/* 🎯 BOTÃO TECNOLÓGICO PREMIUM */}
         <button
-          disabled={!cameraConnected || countdown !== null || isCapturing}
+          disabled={countdown !== null || isCapturing}
           onClick={startCountdown}
           className="group relative mt-3 overflow-hidden rounded-full px-10 py-3.5 text-base font-bold uppercase tracking-widest text-white transition-all duration-300 disabled:opacity-40 disabled:pointer-events-none hover:scale-105 active:scale-95 tech-button"
         >

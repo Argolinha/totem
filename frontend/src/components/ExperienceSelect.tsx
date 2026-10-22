@@ -1,4 +1,5 @@
-import React, { useCallback, useRef, useState } from "react";
+import { photoboothApi } from "../api/client";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useSessionContext, EXPERIENCES, Experience } from "../context/SessionContext";
 
 /**
@@ -10,6 +11,19 @@ import { useSessionContext, EXPERIENCES, Experience } from "../context/SessionCo
  */
 const ExperienceSelect: React.FC = () => {
   const { setExperience, setScreen } = useSessionContext();
+  const [effects, setEffects] = useState<Experience[]>([]);
+  const [loadError, setLoadError] = useState(false);
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setLoadError(false);
+    photoboothApi.getEfeitos().then(items => {
+      if (active) setEffects(items.map((e, i) => ({
+        id: e.id, name: e.nome, gradient: EXPERIENCES[i % EXPERIENCES.length].gradient,
+      })));
+    }).catch(() => { if (active) setLoadError(true); });
+    return () => { active = false; };
+  }, [reload]);
   const [sucking, setSucking] = useState(false);
   const [suckingId, setSuckingId] = useState<string | null>(null);
   const suckPointRef = useRef({ x: 0, y: 0 });
@@ -82,12 +96,14 @@ const ExperienceSelect: React.FC = () => {
         <h2 className="mb-2 text-center text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-purple-200 to-cyan-200 md:text-5xl">
           ESCOLHA SUA EXPERIÊNCIA
         </h2>
-        <p className="mb-10 text-center text-sm text-white/60">
+        <p className="mb-5 text-center text-sm text-white/60">
           Selecione o estilo de IA que vai transformar sua foto
         </p>
 
+        {loadError ? <button onClick={() => setReload(n => n + 1)}>Não foi possível carregar os efeitos. Tentar novamente</button>
+          : effects.length === 0 && <p>Carregando efeitos disponíveis...</p>}
         <div className="grid w-full grid-cols-3 gap-4">
-          {EXPERIENCES.map((exp) => (
+          {effects.map((exp) => (
             <button
               key={exp.id}
               disabled={sucking}
@@ -99,9 +115,9 @@ const ExperienceSelect: React.FC = () => {
               }`}
             >
               <span className="exp-ring" />
-              <div className="relative z-10 flex flex-col items-center gap-3 px-4 py-6">
+              <div className="relative z-10 flex flex-col items-center gap-2 px-4 py-4">
                 <div
-                  className={`flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br ${exp.gradient} shadow-lg`}
+                  className={`flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br ${exp.gradient} shadow-lg`}
                 >
                   <svg className="h-8 w-8 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />

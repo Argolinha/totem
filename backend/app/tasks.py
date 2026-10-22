@@ -191,54 +191,13 @@ def process_photo_task(
         # EFEITOS
         # ---------------------------------------------------------------
 
-        efeitos = []
-
-        try:
-            from app.models import Efeito
-
-            efeitos_db = (
-                db.query(Efeito)
-                .filter(Efeito.ativo == True)
-                .order_by(Efeito.ordem.asc())
-                .all()
-            )
-
-            for efeito in efeitos_db:
-                efeitos.append(
-                    {
-                        "name": efeito.nome,
-                        "prompt": getattr(
-                            efeito,
-                            "prompt",
-                            efeito.nome,
-                        ),
-                        "scene_file": getattr(
-                            efeito,
-                            "scene_file",
-                            None,
-                        ),
-                        "provider_preferido": getattr(
-                            efeito,
-                            "provider_preferido",
-                            None,
-                        ),
-                    }
-                )
-
-        except Exception as exc:
-            logger.warning(
-                "Não foi possível carregar efeitos do banco: %s",
-                exc,
-            )
-
-            efeitos = []
-
-        # ---------------------------------------------------------------
-        # FALLBACK PARA CONFIGURAÇÃO
-        # ---------------------------------------------------------------
-
-        if not efeitos:
-            efeitos = settings.AI_EFFECT_PROMPTS
+        from app.services.selected_effect import available_effects
+        names = photo.effect_names or []
+        if len(names) != 1:
+            raise ValueError("Inicie uma nova captura e escolha um efeito.")
+        efeitos = [e for e in available_effects(db) if e["name"] == names[0]]
+        if len(efeitos) != 1:
+            raise ValueError("O efeito escolhido não está mais disponível.")
 
         logger.info(
             "Quantidade de efeitos para processar: %s",
@@ -277,8 +236,12 @@ def process_photo_task(
         # SALVAR RESULTADOS NA FOTO
         # ---------------------------------------------------------------
 
+        if len(generated_paths) != 1:
+            raise RuntimeError("A geração deve retornar uma única foto.")
         photo.generated_paths = generated_paths
         photo.effect_names = effect_names
+        photo.chosen_index = 0
+        session.error_message = None
 
         # ---------------------------------------------------------------
         # GERAR TOKEN DE DOWNLOAD
@@ -364,27 +327,8 @@ def process_photo_task(
                 db_exc,
             )
 
-        # ---------------------------------------------------------------
-        # RETRY
-        # ---------------------------------------------------------------
-
-        try:
-            raise self.retry(
-                exc=exc,
-                countdown=5,
-            )
-
-        except self.MaxRetriesExceededError:
-            logger.error(
-                "Número máximo de tentativas excedido para sessão %s.",
-                session_id,
-            )
-
-            return {
-                "success": False,
-                "session_id": str(session_id),
-                "error": str(exc),
-            }
+        # Não reenvia automaticamente requisições pagas após falha/timeout.
+        return {"success": False, "session_id": str(session_id), "error": str(exc)}
 
     finally:
         db.close()

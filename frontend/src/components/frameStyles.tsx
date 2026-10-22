@@ -6,14 +6,17 @@ const frames = [
   {
     id: "padrao",
     name: "Padrão",
+    description: "Moldura padrão para sua foto.",
   },
   {
     id: "evento1",
     name: "Evento 1",
+    description: "Moldura especial para o evento.",
   },
   {
     id: "evento2",
     name: "Evento 2",
+    description: "Moldura personalizada para o evento.",
   },
 ];
 
