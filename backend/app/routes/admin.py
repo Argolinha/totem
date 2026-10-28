@@ -7,11 +7,12 @@ obtido em POST /api/admin/auth/login.
 """
 import shutil
 import uuid
+import json
 from datetime import datetime, date
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 
@@ -19,7 +20,7 @@ from app.auth import authenticate_admin, create_access_token, get_current_admin,
 from app.config import settings
 from app.database import get_db
 from app.models import (
-    AdminUser, Cliente, Evento, EventoStatus, Orcamento, OrcamentoStatus,
+    save_presentation, AdminPresentation, AdminUser, Cliente, Evento, EventoStatus, Orcamento, OrcamentoStatus,
     ItemOrcamento, Efeito, Moldura, Session as SessionModel, SessionStatus, Photo,
 )
 from app.schemas import (
@@ -75,8 +76,9 @@ def listar_clientes(
 
 @router.post("/clientes", response_model=ClienteResponse, status_code=201)
 def criar_cliente(payload: ClienteCreate, db: DBSession = Depends(get_db), _user: AdminUser = Depends(get_current_admin)):
-    cliente = Cliente(**payload.model_dump())
+    cliente = Cliente(**payload.model_dump(exclude={"ui"}))
     db.add(cliente)
+    save_presentation(db, cliente, payload.ui)
     db.commit()
     db.refresh(cliente)
     return cliente
@@ -95,7 +97,8 @@ def atualizar_cliente(cliente_id: str, payload: ClienteUpdate, db: DBSession = D
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(404, "Cliente não encontrado")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    save_presentation(db, cliente, payload.ui)
+    for field, value in payload.model_dump(exclude_unset=True, exclude={"ui"}).items():
         setattr(cliente, field, value)
     db.commit()
     db.refresh(cliente)
@@ -107,6 +110,8 @@ def remover_cliente(cliente_id: str, db: DBSession = Depends(get_db), _user: Adm
     cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
     if not cliente:
         raise HTTPException(404, "Cliente não encontrado")
+    if cliente.eventos or cliente.orcamentos or db.query(SessionModel).filter(SessionModel.cliente_id == cliente.id).first():
+        raise HTTPException(409, "Cliente possui histórico. Desative-o em vez de excluir.")
     db.delete(cliente)
     db.commit()
 
@@ -135,8 +140,11 @@ def criar_evento(payload: EventoCreate, db: DBSession = Depends(get_db), _user: 
     cliente = db.query(Cliente).filter(Cliente.id == payload.cliente_id).first()
     if not cliente:
         raise HTTPException(400, "Cliente informado não existe")
-    evento = Evento(**payload.model_dump())
+    if payload.status not in {x.value for x in EventoStatus}:
+        raise HTTPException(422, "Status de evento inválido")
+    evento = Evento(**payload.model_dump(exclude={"ui"}))
     db.add(evento)
+    save_presentation(db, evento, payload.ui)
     db.commit()
     db.refresh(evento)
     return evento
@@ -147,9 +155,15 @@ def atualizar_evento(evento_id: str, payload: EventoUpdate, db: DBSession = Depe
     evento = db.query(Evento).filter(Evento.id == evento_id).first()
     if not evento:
         raise HTTPException(404, "Evento não encontrado")
-    data = payload.model_dump(exclude_unset=True)
+    save_presentation(db, evento, payload.ui)
+    data = payload.model_dump(exclude_unset=True, exclude={"ui"})
     if "status" in data and data["status"]:
-        data["status"] = EventoStatus(data["status"])
+        try:
+            data["status"] = EventoStatus(data["status"])
+        except ValueError:
+            raise HTTPException(422, "Status de evento inválido")
+    if "cliente_id" in data and not db.get(Cliente, data["cliente_id"]):
+        raise HTTPException(422, "Cliente informado não existe")
     for field, value in data.items():
         setattr(evento, field, value)
     db.commit()
@@ -179,7 +193,7 @@ def _orcamento_to_response(o: Orcamento) -> OrcamentoResponse:
         validade=o.validade, observacoes=o.observacoes,
         itens=[ItemOrcamentoResponse(id=i.id, descricao=i.descricao, quantidade=i.quantidade,
                                       valor_unitario=i.valor_unitario / 100) for i in o.itens],
-        created_at=o.created_at,
+        created_at=o.created_at, ui=o.ui,
     )
 
 
@@ -208,6 +222,7 @@ def criar_orcamento(payload: OrcamentoCreate, db: DBSession = Depends(get_db), _
         valor_total=total_centavos,
     )
     db.add(orcamento)
+    save_presentation(db, orcamento, payload.ui)
     db.flush()
 
     for item in payload.itens:
@@ -228,10 +243,18 @@ def atualizar_orcamento(orcamento_id: str, payload: OrcamentoUpdate, db: DBSessi
     if not orcamento:
         raise HTTPException(404, "Orçamento não encontrado")
 
-    data = payload.model_dump(exclude_unset=True)
+    if orcamento.status == OrcamentoStatus.CONVERTIDO and payload.status not in (None, "convertido"):
+        raise HTTPException(409, "Orçamento convertido deve manter seu histórico de conversão")
+    save_presentation(db, orcamento, payload.ui)
+    data = payload.model_dump(exclude_unset=True, exclude={"ui"})
     itens = data.pop("itens", None)
     if "status" in data and data["status"]:
-        data["status"] = OrcamentoStatus(data["status"])
+        try:
+            data["status"] = OrcamentoStatus(data["status"])
+        except ValueError:
+            raise HTTPException(422, "Status de orçamento inválido")
+    if "cliente_id" in data and not db.get(Cliente, data["cliente_id"]):
+        raise HTTPException(422, "Cliente informado não existe")
     for field, value in data.items():
         setattr(orcamento, field, value)
 
@@ -256,6 +279,11 @@ def converter_orcamento_em_evento(orcamento_id: str, db: DBSession = Depends(get
     orcamento = db.query(Orcamento).filter(Orcamento.id == orcamento_id).first()
     if not orcamento:
         raise HTTPException(404, "Orçamento não encontrado")
+    existing_event = db.query(Evento).filter(Evento.orcamento_id == orcamento.id).first()
+    if existing_event:
+        raise HTTPException(409, "Este orçamento já foi convertido em evento")
+    if orcamento.status != OrcamentoStatus.APROVADO:
+        raise HTTPException(409, "Aprove o orçamento antes de converter em evento")
     if not orcamento.data_evento_prevista:
         raise HTTPException(400, "Orçamento não possui data prevista para o evento")
 
@@ -268,6 +296,7 @@ def converter_orcamento_em_evento(orcamento_id: str, db: DBSession = Depends(get
     )
     orcamento.status = OrcamentoStatus.CONVERTIDO
     db.add(evento)
+    save_presentation(db, evento, {**orcamento.ui, "status": "Confirmado"})
     db.commit()
     db.refresh(evento)
     return evento
@@ -278,6 +307,8 @@ def remover_orcamento(orcamento_id: str, db: DBSession = Depends(get_db), _user:
     orcamento = db.query(Orcamento).filter(Orcamento.id == orcamento_id).first()
     if not orcamento:
         raise HTTPException(404, "Orçamento não encontrado")
+    if db.query(Evento).filter(Evento.orcamento_id == orcamento.id).first():
+        raise HTTPException(409, "Orçamento vinculado a um evento não pode ser excluído")
     db.delete(orcamento)
     db.commit()
 
@@ -293,8 +324,9 @@ def listar_efeitos(db: DBSession = Depends(get_db), _user: AdminUser = Depends(g
 
 @router.post("/efeitos", response_model=EfeitoResponse, status_code=201)
 def criar_efeito(payload: EfeitoCreate, db: DBSession = Depends(get_db), _user: AdminUser = Depends(get_current_admin)):
-    efeito = Efeito(**payload.model_dump())
+    efeito = Efeito(**payload.model_dump(exclude={"ui"}))
     db.add(efeito)
+    save_presentation(db, efeito, payload.ui)
     db.commit()
     db.refresh(efeito)
     return efeito
@@ -305,7 +337,8 @@ def atualizar_efeito(efeito_id: str, payload: EfeitoUpdate, db: DBSession = Depe
     efeito = db.query(Efeito).filter(Efeito.id == efeito_id).first()
     if not efeito:
         raise HTTPException(404, "Efeito não encontrado")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    save_presentation(db, efeito, payload.ui)
+    for field, value in payload.model_dump(exclude_unset=True, exclude={"ui"}).items():
         setattr(efeito, field, value)
     db.commit()
     db.refresh(efeito)
@@ -328,7 +361,9 @@ async def upload_cena_efeito(efeito_id: str, file: UploadFile = File(...), db: D
     if not efeito:
         raise HTTPException(404, "Efeito não encontrado")
 
-    ext = Path(file.filename).suffix or ".jpg"
+    ext = Path(file.filename or "scene.jpg").suffix.lower() or ".jpg"
+    _validate_image(file, ext)
+    settings.SCENES_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{efeito.id}{ext}"
     filepath = settings.SCENES_DIR / filename
     with open(filepath, "wb") as buffer:
@@ -355,13 +390,15 @@ def listar_molduras(db: DBSession = Depends(get_db), _user: AdminUser = Depends(
 
 @router.post("/molduras", response_model=MolduraResponse, status_code=201)
 async def criar_moldura(
-    nome: str,
-    padrao: bool = False,
+    nome: str = Form(...),
+    padrao: bool = Form(False),
+    ui: str = Form("{}"),
     file: UploadFile = File(...),
     db: DBSession = Depends(get_db),
     _user: AdminUser = Depends(get_current_admin),
 ):
-    ext = Path(file.filename).suffix or ".png"
+    ext = Path(file.filename or "frame.png").suffix.lower() or ".png"
+    _validate_image(file, ext)
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = FRAMES_DIR / filename
     with open(filepath, "wb") as buffer:
@@ -371,7 +408,14 @@ async def criar_moldura(
         db.query(Moldura).update({Moldura.padrao: False})
 
     moldura = Moldura(nome=nome, arquivo_path=f"/static/frames/{filename}", padrao=padrao)
+    try:
+        presentation = json.loads(ui)
+        if not isinstance(presentation, dict):
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise HTTPException(422, "Dados da moldura inválidos")
     db.add(moldura)
+    save_presentation(db, moldura, presentation)
     db.commit()
     db.refresh(moldura)
     return moldura
@@ -393,7 +437,7 @@ def remover_moldura(moldura_id: str, db: DBSession = Depends(get_db), _user: Adm
 def _session_to_admin_response(s: SessionModel) -> SessionAdminResponse:
     results, effect_names, printed = [], [], False
     if s.photo:
-        results = [f"{settings.PUBLIC_BASE_URL}{p}" for p in (s.photo.generated_paths or [])]
+        results = [f"/static/generated/{Path(str(path).replace(chr(92), chr(47))).name}" for path in (s.photo.generated_paths or [])]
         effect_names = s.photo.effect_names or []
         printed = bool(s.photo.printed)
     return SessionAdminResponse(
@@ -407,7 +451,7 @@ def _session_to_admin_response(s: SessionModel) -> SessionAdminResponse:
 @router.get("/sessions", response_model=List[SessionAdminResponse])
 def listar_sessions(
     status: Optional[str] = None,
-    limit: int = Query(100, le=500),
+    limit: int = Query(100, ge=1, le=500),
     db: DBSession = Depends(get_db),
     _user: AdminUser = Depends(get_current_admin),
 ):
@@ -424,10 +468,22 @@ def reprocessar_session(session_id: str, db: DBSession = Depends(get_db), _user:
     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
     if not session:
         raise HTTPException(404, "Sessão não encontrada")
+    if session.status not in (SessionStatus.ERROR, SessionStatus.QUEUED_OFFLINE):
+        raise HTTPException(409, "Somente sessões em erro ou offline podem ser reprocessadas")
+    if not session.photo or not session.photo.original_path:
+        raise HTTPException(409, "Sessão não possui foto original")
+    previous_status = session.status
+    previous_error = session.error_message
     session.status = SessionStatus.UPLOADED
     session.error_message = None
     db.commit()
-    process_photo_task.delay(session.id)
+    try:
+        process_photo_task.apply_async(args=[session.id], retry=False)
+    except Exception:
+        session.status = previous_status
+        session.error_message = previous_error
+        db.commit()
+        raise HTTPException(503, "Fila indisponível. Confira os serviços Redis e Celery e tente novamente.")
     db.refresh(session)
     return _session_to_admin_response(session)
 
@@ -470,3 +526,177 @@ def dashboard_stats(db: DBSession = Depends(get_db), _user: AdminUser = Depends(
         sessions_por_status=sessions_por_status,
         fila_offline=fila_offline,
     )
+
+
+@router.get("/system")
+def system_info(_user: AdminUser = Depends(get_current_admin)):
+    return {
+        "disco_percentual": round(shutil.disk_usage(settings.STORAGE_DIR).used / shutil.disk_usage(settings.STORAGE_DIR).total * 100),
+        "totem_id": settings.TOTEM_ID,
+        "provedor_ia": settings.AI_PROVIDER,
+        "url_publica": settings.PUBLIC_BASE_URL,
+        "impressao": "Simulação; este projeto ainda não integra uma impressora física",
+    }
+
+
+def _validate_image(file: UploadFile, extension: str):
+    from PIL import Image, UnidentifiedImageError
+    if extension not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise HTTPException(422, "Use uma imagem PNG, JPEG ou WebP")
+    file.file.seek(0, 2)
+    if file.file.tell() > 25 * 1024 * 1024:
+        raise HTTPException(413, "Imagem deve ter até 25 MB")
+    file.file.seek(0)
+    try:
+        with Image.open(file.file) as img:
+            img.verify()
+    except (UnidentifiedImageError, OSError, ValueError):
+        raise HTTPException(422, "Arquivo de imagem inválido")
+    finally:
+        file.file.seek(0)
+
+
+@router.put("/molduras/{moldura_id}", response_model=MolduraResponse)
+def editar_moldura(moldura_id: str, payload: dict, db: DBSession = Depends(get_db), _user: AdminUser = Depends(get_current_admin)):
+    moldura = db.get(Moldura, moldura_id)
+    if not moldura:
+        raise HTTPException(404, "Moldura não encontrada")
+    for key in ("nome", "ativa", "padrao"):
+        if key in payload:
+            value = payload[key]
+            if key == "nome" and (not isinstance(value, str) or not value.strip()):
+                raise HTTPException(422, "Nome inválido")
+            if key != "nome" and not isinstance(value, bool):
+                raise HTTPException(422, "Status inválido")
+            setattr(moldura, key, value)
+    if moldura.padrao:
+        db.query(Moldura).filter(Moldura.id != moldura.id).update({Moldura.padrao: False})
+    if "ui" in payload:
+        if not isinstance(payload["ui"], dict):
+            raise HTTPException(422, "Dados da moldura inválidos")
+        save_presentation(db, moldura, payload["ui"])
+    db.commit()
+    db.refresh(moldura)
+    return moldura
+
+
+@router.get("/preferences/{section}")
+def get_preferences(section: str, db: DBSession = Depends(get_db), _user: AdminUser = Depends(get_current_admin)):
+    if section not in {"config", "impressao"}:
+        raise HTTPException(404, "Configuração não encontrada")
+    row = db.get(AdminPresentation, f"preferences:{section}")
+    defaults = {"nomeTotem": "Vive AI Photobooth", "qualidade": "Alta", "contagem": "3", "som": False, "modoNoturno": False, "impressaoAutomatica": False} if section == "config" else {}
+    return {**defaults, **(row.data if row else {})}
+
+
+@router.put("/preferences/{section}")
+def put_preferences(section: str, payload: dict, db: DBSession = Depends(get_db), _user: AdminUser = Depends(require_role("admin"))):
+    if section not in {"config", "impressao"}:
+        raise HTTPException(404, "Configuração não encontrada")
+    if section == "config":
+        allowed = {"nomeTotem", "qualidade", "contagem", "som", "modoNoturno", "impressaoAutomatica"}
+        if set(payload) - allowed:
+            raise HTTPException(422, "Configuração desconhecida")
+        if "contagem" in payload and str(payload["contagem"]) not in {"3", "5", "7", "10"}:
+            raise HTTPException(422, "Contagem inválida")
+        if "qualidade" in payload and payload["qualidade"] not in {"Baixa", "Média", "Alta", "Ultra"}:
+            raise HTTPException(422, "Qualidade inválida")
+        for name in ("som", "modoNoturno", "impressaoAutomatica"):
+            if name in payload and not isinstance(payload[name], bool):
+                raise HTTPException(422, "Valor de opção inválido")
+        if "nomeTotem" in payload and (not isinstance(payload["nomeTotem"], str) or not payload["nomeTotem"].strip() or len(payload["nomeTotem"]) > 120):
+            raise HTTPException(422, "Nome do totem inválido")
+    key = f"preferences:{section}"
+    row = db.get(AdminPresentation, key)
+    if not row:
+        row = AdminPresentation(key=key)
+        db.add(row)
+    row.data = payload
+    db.commit()
+    return payload
+
+
+@router.get('/dashboard/overview')
+def dashboard_overview(periodo: str = 'Hoje', db: DBSession = Depends(get_db), _user: AdminUser = Depends(get_current_admin)):
+    from datetime import timedelta, timezone
+    from zoneinfo import ZoneInfo
+    from collections import Counter
+    now = datetime.now(ZoneInfo('America/Sao_Paulo'))
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    begin = midnight - timedelta(days=1 if periodo == 'Ontem' else 6 if periodo == 'Últimos 7 dias' else 0)
+    finish = midnight if periodo == 'Ontem' else now
+    # Existing timestamps are naive UTC values.
+    start_utc = begin.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = finish.astimezone(timezone.utc).replace(tzinfo=None)
+    rows = db.query(SessionModel).filter(SessionModel.created_at >= start_utc, SessionModel.created_at <= end_utc).all()
+    effects = Counter(name for s in rows if s.photo for name in (s.photo.effect_names or []))
+    queue = db.query(SessionModel).filter(SessionModel.status.in_([SessionStatus.UPLOADED, SessionStatus.PROCESSING, SessionStatus.QUEUED_OFFLINE, SessionStatus.PRINTING])).order_by(SessionModel.created_at.desc()).limit(3).all()
+    disk = shutil.disk_usage(settings.STORAGE_DIR)
+    return {
+        'total': sum(1 for s in rows if s.photo),
+        'processadas': sum(1 for s in rows if s.photo and s.photo.generated_paths),
+        'impressas': sum(1 for s in rows if s.photo and s.photo.printed),
+        'pendentes': sum(1 for s in rows if s.status in [SessionStatus.CREATED, SessionStatus.UPLOADED, SessionStatus.PROCESSING, SessionStatus.QUEUED_OFFLINE, SessionStatus.PRINTING]),
+        'efeitos': dict(effects), 'fila': [_session_to_admin_response(s).model_dump() for s in queue],
+        'disco_percentual': round(disk.used / disk.total * 100),
+    }
+
+
+@router.get('/reports/events')
+def event_reports(days: int = Query(30, ge=1, le=3650), db: DBSession = Depends(get_db), _user: AdminUser = Depends(get_current_admin)):
+    from datetime import timedelta
+    since = datetime.utcnow() - timedelta(days=days)
+    sessions = db.query(SessionModel).filter(SessionModel.created_at >= since).all()
+    groups = {}
+    for session in sessions:
+        key = session.evento_id or 'sem-evento'
+        if key not in groups:
+            event = db.get(Evento, key) if session.evento_id else None
+            groups[key] = {'id': key, 'evento': event.nome if event else 'Sessões sem evento vinculado', 'data': session.created_at.strftime('%d/%m/%Y'), 'fotos': 0, 'impressoes': 0, 'efeitos': 0, 'status': 'Concluído'}
+        group = groups[key]
+        group['fotos'] += int(bool(session.photo))
+        group['impressoes'] += int(bool(session.photo and session.photo.printed))
+        group['efeitos'] += len(session.photo.generated_paths or []) if session.photo else 0
+        if session.status in (SessionStatus.CREATED, SessionStatus.UPLOADED, SessionStatus.PROCESSING, SessionStatus.QUEUED_OFFLINE, SessionStatus.PRINTING):
+            group['status'] = 'Em andamento'
+    return list(groups.values())
+
+
+@router.delete('/sessions/{session_id}/photos/{index}', status_code=204)
+def delete_generated_photo(session_id: str, index: int, db: DBSession = Depends(get_db), _user: AdminUser = Depends(require_role('admin'))):
+    session = db.get(SessionModel, session_id)
+    if not session or not session.photo:
+        raise HTTPException(404, 'Foto não encontrada')
+    if session.status in (SessionStatus.PROCESSING, SessionStatus.PRINTING):
+        raise HTTPException(409, 'Aguarde o processamento ou impressão terminar')
+    photo = session.photo
+    paths = list(photo.generated_paths or [])
+    names = list(photo.effect_names or [])
+    if index < 0 or index >= len(paths):
+        raise HTTPException(404, 'Foto não encontrada')
+    removed = paths.pop(index)
+    if index < len(names):
+        names.pop(index)
+    photo.generated_paths = paths
+    photo.effect_names = names
+    if photo.chosen_index is not None:
+        photo.chosen_index = None if photo.chosen_index == index else photo.chosen_index - int(photo.chosen_index > index)
+    photo.download_token = None
+    db.commit()
+    filename = Path(str(removed).replace(chr(92), chr(47))).name
+    target = (settings.GENERATED_DIR / filename).resolve()
+    if target.is_relative_to(settings.GENERATED_DIR.resolve()) and target.is_file():
+        target.unlink()
+
+
+@router.post('/sessions/{session_id}/cancel')
+def cancel_session(session_id: str, db: DBSession = Depends(get_db), _user: AdminUser = Depends(get_current_admin)):
+    session = db.get(SessionModel, session_id)
+    if not session:
+        raise HTTPException(404, 'Sessão não encontrada')
+    if session.status not in (SessionStatus.CREATED, SessionStatus.UPLOADED, SessionStatus.QUEUED_OFFLINE):
+        raise HTTPException(409, 'Somente sessões aguardando processamento podem ser canceladas')
+    session.status = SessionStatus.ERROR
+    session.error_message = 'Cancelado pelo operador'
+    db.commit()
+    return {'status': 'cancelled'}

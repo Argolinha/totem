@@ -1,3 +1,5 @@
+import {useRecords, DataState, perform, Editor} from './data';
+import {adminApi, assetUrl, Row} from './api';
 import React, { useMemo, useState } from "react";
 import Layout from "./layout";
 import {
@@ -12,7 +14,7 @@ import {
 } from "lucide-react";
 
 interface Moldura {
-  id: number;
+  id: string;
   nome: string;
   descricao: string;
   categoria: string;
@@ -22,71 +24,11 @@ interface Moldura {
   imagem: string;
 }
 
-const moldurasIniciais: Moldura[] = [
-  {
-    id: 1,
-    nome: "Moldura Elegance",
-    descricao: "Moldura clássica e sofisticada para eventos sociais.",
-    categoria: "Elegante",
-    formato: "10x15",
-    status: "Ativa",
-    usos: 42,
-    imagem: "https://placehold.co/300x200/7C3AED/ffffff?text=Elegance",
-  },
-  {
-    id: 2,
-    nome: "Festa Neon",
-    descricao: "Visual moderno e colorido para festas e baladas.",
-    categoria: "Festa",
-    formato: "10x15",
-    status: "Ativa",
-    usos: 31,
-    imagem: "https://placehold.co/300x200/EC4899/ffffff?text=Neon",
-  },
-  {
-    id: 3,
-    nome: "Casamento",
-    descricao: "Moldura delicada para casamentos e celebrações.",
-    categoria: "Casamento",
-    formato: "15x20",
-    status: "Ativa",
-    usos: 28,
-    imagem: "https://placehold.co/300x200/10B981/ffffff?text=Wedding",
-  },
-  {
-    id: 4,
-    nome: "Corporativo",
-    descricao: "Layout profissional para eventos empresariais.",
-    categoria: "Corporativo",
-    formato: "10x15",
-    status: "Inativa",
-    usos: 15,
-    imagem: "https://placehold.co/300x200/64748B/ffffff?text=Business",
-  },
-  {
-    id: 5,
-    nome: "Aniversário",
-    descricao: "Moldura divertida para aniversários e comemorações.",
-    categoria: "Festa",
-    formato: "10x15",
-    status: "Ativa",
-    usos: 22,
-    imagem: "https://placehold.co/300x200/F59E0B/ffffff?text=Party",
-  },
-  {
-    id: 6,
-    nome: "Minimalista",
-    descricao: "Design limpo e moderno para diferentes ocasiões.",
-    categoria: "Minimalista",
-    formato: "15x20",
-    status: "Ativa",
-    usos: 18,
-    imagem: "https://placehold.co/300x200/334155/ffffff?text=Minimal",
-  },
-];
+
 
 export default function Molduras() {
-  const [molduras, setMolduras] = useState<Moldura[]>(moldurasIniciais);
+  const {rows,reload,loading,error}=useRecords('molduras');const [editor,setEditor]=useState<Row|null>(null);
+  const molduras:Moldura[]=rows.map(m=>({id:m.id,nome:m.nome,descricao:m.ui.descricao||'',categoria:m.ui.categoria||'Minimalista',formato:m.ui.formato||'Não informado',status:m.ativa?'Ativa':'Inativa',usos:0,imagem:assetUrl(m.arquivo_path)}));
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("Todos");
 
@@ -121,57 +63,21 @@ export default function Molduras() {
     0
   );
 
-  const alternarStatus = (id: number) => {
-    setMolduras((atual) =>
-      atual.map((moldura) =>
-        moldura.id === id
-          ? {
-              ...moldura,
-              status:
-                moldura.status === "Ativa" ? "Inativa" : "Ativa",
-            }
-          : moldura
-      )
-    );
-  };
-
-  const excluirMoldura = (id: number) => {
-    const moldura = molduras.find((item) => item.id === id);
-
-    if (!moldura) return;
-
-    const confirmar = window.confirm(
-      `Deseja realmente excluir a moldura "${moldura.nome}"?`
-    );
-
-    if (confirmar) {
-      setMolduras((atual) =>
-        atual.filter((item) => item.id !== id)
-      );
-    }
-  };
-
-  const adicionarMoldura = () => {
-    window.alert(
-      "O cadastro de uma nova moldura será implementado na próxima etapa."
-    );
-  };
-
-  const editarMoldura = (nome: string) => {
-    window.alert(
-      `A edição da moldura "${nome}" será implementada na próxima etapa.`
-    );
-  };
-
-  const visualizarMoldura = (nome: string) => {
-    window.alert(`Visualização da moldura "${nome}".`);
-  };
+  const alternarStatus=(id:string)=>{const row=rows.find(m=>m.id===id);void perform(()=>adminApi.put('/molduras/'+id,{ativa:!row?.ativa}),()=>{void reload();});};
+  const excluirMoldura=(id:string)=>{if(window.confirm('Excluir esta moldura?'))void perform(()=>adminApi.delete('/molduras/'+id),()=>{void reload();});};
+  const adicionarMoldura=()=>setEditor({nome:'',categoria:'Minimalista',formato:'10x15',padrao:false});
+  const editarMoldura=(id:string)=>{const row=rows.find(m=>m.id===id);if(row)setEditor({...row,...row.ui});};
+  const visualizarMoldura=(id:string)=>{const row=rows.find(m=>m.id===id);if(row)window.open(assetUrl(row.arquivo_path),'_blank','noopener,noreferrer');};
+  async function salvarMoldura(v:Row,file:File|null){const ui={categoria:v.categoria,formato:v.formato,descricao:v.descricao||''};
+    if(v.id)await adminApi.put('/molduras/'+v.id,{nome:v.nome,padrao:!!v.padrao,ui});else{if(!file)throw new Error('Selecione uma imagem.');const form=new FormData();form.append('nome',v.nome);form.append('padrao',String(!!v.padrao));form.append('ui',JSON.stringify(ui));form.append('file',file);await adminApi.post('/molduras',form);}await reload();}
 
   return (
     <Layout
       title="03. MOLDURAS"
       currentPath="/molduras"
     >
+      <DataState loading={loading} error={error} count={molduras.length}/>
+      {editor&&<Editor title={editor.id?'Editar moldura':'Adicionar moldura'} initial={editor} fields={[{name:'nome',label:'Nome',required:true},{name:'descricao',label:'Descrição'},{name:'categoria',label:'Categoria',options:['Elegante','Festa','Casamento','Corporativo','Minimalista']},{name:'formato',label:'Formato',options:['10x15','15x20']},{name:'padrao',label:'Padrão',type:'checkbox'},...(!editor.id?[{name:'file',label:'Imagem',type:'file',required:true}]:[])]} onSave={salvarMoldura} onClose={()=>setEditor(null)}/>}
       {/* Cabeçalho */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
         <div>
@@ -253,7 +159,7 @@ export default function Molduras() {
               </p>
 
               <p className="text-2xl font-bold text-gray-900">
-                {totalUsos}
+                Não medido
               </p>
             </div>
           </div>
@@ -342,7 +248,7 @@ export default function Molduras() {
 
                   <div className="flex items-center gap-1 text-xs text-gray-400">
                     <ImageIcon size={14} />
-                    {moldura.usos}
+                    —
                   </div>
                 </div>
 
@@ -354,7 +260,7 @@ export default function Molduras() {
                 <div className="grid grid-cols-4 gap-2">
                   <button
                     onClick={() =>
-                      visualizarMoldura(moldura.nome)
+                      visualizarMoldura(moldura.id)
                     }
                     title="Visualizar"
                     className="h-10 rounded-lg border border-gray-200 text-gray-500 flex items-center justify-center hover:bg-gray-50 hover:text-gray-900 transition-colors"
@@ -382,7 +288,7 @@ export default function Molduras() {
 
                   <button
                     onClick={() =>
-                      editarMoldura(moldura.nome)
+                      editarMoldura(moldura.id)
                     }
                     title="Editar"
                     className="h-10 rounded-lg border border-gray-200 text-gray-500 flex items-center justify-center hover:bg-gray-50 hover:text-gray-900 transition-colors"

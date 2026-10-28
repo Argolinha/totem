@@ -71,3 +71,18 @@ def init_db():
         print(
             f"[DATABASE] Aviso ao criar administrador padrão: {exc}"
         )
+
+    from app.models import Efeito, AdminPresentation, save_presentation
+    from app.services.effect_presets import PRESETS
+    from app.services.selected_effect import effect_key
+    with SessionLocal() as db:
+        if not db.get(AdminPresentation, "catalog:admin-real-v1"):
+            existing = {effect_key(e.nome): e for e in db.query(Efeito).all()}
+            for index, effect in enumerate(PRESETS):
+                record = existing.get(effect_key(effect["name"]))
+                if record is None:
+                    record = Efeito(nome=effect["name"], prompt=effect["prompt"], ordem=index, ativo=True)
+                    db.add(record)
+                save_presentation(db, record, {"preset_id": effect["id"]})
+            db.add(AdminPresentation(key="catalog:admin-real-v1", data={"done": True}))
+            db.commit()

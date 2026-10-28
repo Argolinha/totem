@@ -1,3 +1,5 @@
+import {useRecords, DataState, perform, dateBR} from './data';
+import {adminApi, assetUrl} from './api';
 import React, { useMemo, useState } from "react";
 import Layout from "./layout";
 import {
@@ -11,7 +13,7 @@ import {
 } from "lucide-react";
 
 interface Foto {
-  id: number;
+  id: string;
   nome: string;
   data: string;
   horario: string;
@@ -20,71 +22,11 @@ interface Foto {
   imagem: string;
 }
 
-const fotosIniciais: Foto[] = [
-  {
-    id: 1,
-    nome: "Foto #001",
-    data: "11/09/2026",
-    horario: "14:32",
-    efeito: "Avatar Cartoon",
-    moldura: "Clássica",
-    imagem:
-      "https://placehold.co/600x600/7C3AED/ffffff?text=FOTO+001",
-  },
-  {
-    id: 2,
-    nome: "Foto #002",
-    data: "11/09/2026",
-    horario: "14:28",
-    efeito: "Face Swap",
-    moldura: "Festa",
-    imagem:
-      "https://placehold.co/600x600/EC4899/ffffff?text=FOTO+002",
-  },
-  {
-    id: 3,
-    nome: "Foto #003",
-    data: "11/09/2026",
-    horario: "14:21",
-    efeito: "Cenário Mágico",
-    moldura: "Neon",
-    imagem:
-      "https://placehold.co/600x600/10B981/ffffff?text=FOTO+003",
-  },
-  {
-    id: 4,
-    nome: "Foto #004",
-    data: "11/09/2026",
-    horario: "14:15",
-    efeito: "Retrato Vintage",
-    moldura: "Vintage",
-    imagem:
-      "https://placehold.co/600x600/F59E0B/ffffff?text=FOTO+004",
-  },
-  {
-    id: 5,
-    nome: "Foto #005",
-    data: "11/09/2026",
-    horario: "13:58",
-    efeito: "Avatar Cartoon",
-    moldura: "Clássica",
-    imagem:
-      "https://placehold.co/600x600/3B82F6/ffffff?text=FOTO+005",
-  },
-  {
-    id: 6,
-    nome: "Foto #006",
-    data: "11/09/2026",
-    horario: "13:45",
-    efeito: "Face Swap",
-    moldura: "Festa",
-    imagem:
-      "https://placehold.co/600x600/EF4444/ffffff?text=FOTO+006",
-  },
-];
+
 
 export default function Fotos() {
-  const [fotos, setFotos] = useState<Foto[]>(fotosIniciais);
+  const {rows,reload,loading,error}=useRecords('sessions?limit=500');
+  const fotos:Foto[]=rows.flatMap(s=>(s.results||[]).map((path:string,index:number)=>({id:`${s.id}:${index}`,nome:`Foto #${s.id.slice(0,8)} · ${index+1}`,data:dateBR(s.created_at),horario:new Date(s.created_at).toLocaleTimeString('pt-BR'),efeito:s.effect_names?.[index]||'Sem efeito informado',moldura:'Não informada',imagem:assetUrl(path)})));
   const [busca, setBusca] = useState("");
   const [filtroData, setFiltroData] = useState("Todas");
   const [fotoSelecionada, setFotoSelecionada] =
@@ -106,25 +48,7 @@ export default function Fotos() {
     });
   }, [fotos, busca, filtroData]);
 
-  const excluirFoto = (id: number) => {
-    const foto = fotos.find((item) => item.id === id);
-
-    if (!foto) return;
-
-    const confirmar = window.confirm(
-      "Deseja realmente excluir esta foto?"
-    );
-
-    if (!confirmar) return;
-
-    setFotos((atual) =>
-      atual.filter((item) => item.id !== id)
-    );
-
-    if (fotoSelecionada?.id === id) {
-      setFotoSelecionada(null);
-    }
-  };
+  const excluirFoto=(id:string)=>{if(!window.confirm('Deseja realmente excluir esta foto?'))return;const [session,index]=id.split(':');void perform(()=>adminApi.delete(`/sessions/${session}/photos/${index}`),()=>{setFotoSelecionada(null);void reload();});};
 
   const visualizarFoto = (foto: Foto) => {
     setFotoSelecionada(foto);
@@ -145,7 +69,7 @@ export default function Fotos() {
   const totalFotos = fotos.length;
 
   const fotosHoje = fotos.filter(
-    (foto) => foto.data === "11/09/2026"
+    (foto) => foto.data === new Date().toLocaleDateString("pt-BR")
   ).length;
 
   const efeitosUtilizados = new Set(
@@ -158,6 +82,7 @@ export default function Fotos() {
 
   return (
     <Layout title="03. FOTOS" currentPath="/fotos">
+      <DataState loading={loading} error={error} count={fotos.length}/>
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
         <div>
           <h2 className="text-xl font-bold text-gray-900">

@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import {adminApi, errorMessage} from './api';
+import {notify} from './data';
+import React, { useEffect, useState } from "react";
 import Layout from "./layout";
 import {
   Printer,
@@ -20,13 +22,9 @@ export default function Impressao() {
   const [modo, setModo] = useState("Automático");
   const [salvo, setSalvo] = useState(false);
 
-  const salvarConfiguracoes = () => {
-    setSalvo(true);
-
-    setTimeout(() => {
-      setSalvo(false);
-    }, 2500);
-  };
+  const [busy,setBusy]=useState(false);const [loaded,setLoaded]=useState(false);
+  useEffect(()=>{adminApi.get('/preferences/impressao').then(r=>{const v=r.data;if(v.impressora!==undefined)setImpressora(v.impressora);if(v.papel!==undefined)setPapel(v.papel);if(v.qualidade!==undefined)setQualidade(v.qualidade);if(v.copias!==undefined)setCopias(v.copias);if(v.modo!==undefined)setModo(v.modo);setLoaded(true);}).catch(e=>notify(errorMessage(e),true));},[]);
+  const salvarConfiguracoes=async()=>{if(busy||!loaded)return;setBusy(true);setSalvo(false);try{await adminApi.put('/preferences/impressao',{impressora,papel,qualidade,copias,modo});setSalvo(true);}catch(e){notify(errorMessage(e),true);}finally{setBusy(false);}};
 
   return (
     <Layout
@@ -46,7 +44,7 @@ export default function Impressao() {
         </div>
 
         <button
-          onClick={salvarConfiguracoes}
+          disabled={busy||!loaded} onClick={salvarConfiguracoes}
           className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-vive-primary text-white text-sm font-semibold hover:opacity-90 transition-opacity"
         >
           <Save size={18} />
@@ -90,12 +88,12 @@ export default function Impressao() {
 
                 <span className="flex items-center gap-1.5 text-xs font-semibold text-green-500">
                   <span className="w-2 h-2 rounded-full bg-green-500" />
-                  Online
+                  Não monitorada
                 </span>
               </div>
 
               <p className="text-sm text-gray-500 mt-1">
-                Impressora principal conectada ao sistema
+                Preferência de impressora cadastrada
               </p>
             </div>
           </div>
@@ -104,7 +102,7 @@ export default function Impressao() {
             <button
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
               onClick={() =>
-                window.alert("Verificando conexão com a impressora...")
+                notify("A impressão física ainda não está integrada neste projeto.",true)
               }
             >
               <RefreshCw size={17} />
@@ -114,7 +112,7 @@ export default function Impressao() {
             <button
               className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
               onClick={() =>
-                window.alert("Abrindo configurações da impressora...")
+                notify("Configure o driver e a impressora no sistema operacional do totem.")
               }
             >
               <Settings size={17} />
@@ -353,11 +351,11 @@ export default function Impressao() {
 
                 <div>
                   <p className="text-sm font-medium text-gray-800">
-                    Impressora online
+                    Impressora não monitorada
                   </p>
 
                   <p className="text-xs text-gray-500">
-                    Pronta para imprimir
+                    Integração física pendente
                   </p>
                 </div>
               </div>
@@ -370,11 +368,11 @@ export default function Impressao() {
 
                 <div>
                   <p className="text-sm font-medium text-gray-800">
-                    Conexão ativa
+                    Conexão física pendente
                   </p>
 
                   <p className="text-xs text-gray-500">
-                    Comunicação estabelecida
+                    Configure o driver da impressora no host
                   </p>
                 </div>
               </div>
@@ -412,7 +410,7 @@ export default function Impressao() {
                 </p>
 
                 <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                  As configurações exibidas nesta tela são locais.
+                  As preferências são salvas no banco de dados.
                   A integração real com a impressora será conectada
                   posteriormente ao sistema.
                 </p>
@@ -446,9 +444,7 @@ export default function Impressao() {
 
           <button
             onClick={() =>
-              window.alert(
-                "Teste de impressão enviado para a fila."
-              )
+              notify("Nenhum teste foi enviado: integração com a impressora física pendente.",true)
             }
             className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border border-vive-primary text-vive-primary text-sm font-semibold hover:bg-vive-primary/5 transition-colors"
           >

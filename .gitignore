@@ -4,3 +4,6 @@ backend/storage/
 backend/vive_photobooth.db
 frontend/front.zip
 **/__pycache__/
+
+/backend/app.zip
+/backend/app (2).zip

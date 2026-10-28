@@ -30,6 +30,7 @@ import DevScreenSwitcher from "./components/DevScreenSwitcher";
 // TELAS DO ADMIN
 // ==========================================
 import Dashboard from "./admin/Dashboard";
+import Login, {AdminGuard} from "./admin/Login";
 import Eventos from "./admin/Eventos";
 import Efeitos from "./admin/Efeitos";
 import Molduras from "./admin/Molduras";
@@ -191,9 +192,10 @@ const App: React.FC = () => {
     <BrowserRouter>
       <Routes>
         {/* ADMIN */}
+        <Route path="/admin/login" element={<Login />} />
         <Route
           path="/admin/*"
-          element={<AdminApp />}
+          element={<AdminGuard><AdminApp /></AdminGuard>}
         />
 
         {/* TOTEM */}

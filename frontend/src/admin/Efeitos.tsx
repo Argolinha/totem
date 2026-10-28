@@ -1,3 +1,6 @@
+import {useRecords, DataState, perform, Editor} from './data';
+import {adminApi, assetUrl, Row} from './api';
+const placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Crect width='120' height='120' fill='%237C3AED'/%3E%3Ctext x='60' y='68' text-anchor='middle' fill='white' font-size='25'%3EAI%3C/text%3E%3C/svg%3E";
 import React, { useMemo, useState } from "react";
 import Layout from "./layout";
 import {
@@ -13,7 +16,7 @@ import {
 } from "lucide-react";
 
 interface Efeito {
-  id: number;
+  id: string;
   nome: string;
   descricao: string;
   categoria: string;
@@ -22,47 +25,12 @@ interface Efeito {
   imagem: string;
 }
 
-const efeitosIniciais: Efeito[] = [
-  {
-    id: 1,
-    nome: "Avatar Cartoon",
-    descricao: "Transforma a foto em um avatar com estilo cartoon.",
-    categoria: "Avatar",
-    status: "Ativo",
-    usos: 45,
-    imagem: "https://placehold.co/120x120/7C3AED/ffffff?text=AI",
-  },
-  {
-    id: 2,
-    nome: "Face Swap",
-    descricao: "Troca o rosto da pessoa utilizando inteligência artificial.",
-    categoria: "Rosto",
-    status: "Ativo",
-    usos: 20,
-    imagem: "https://placehold.co/120x120/EC4899/ffffff?text=AI",
-  },
-  {
-    id: 3,
-    nome: "Cenário Mágico",
-    descricao: "Remove o fundo e aplica um cenário criado por IA.",
-    categoria: "Cenário",
-    status: "Ativo",
-    usos: 20,
-    imagem: "https://placehold.co/120x120/10B981/ffffff?text=AI",
-  },
-  {
-    id: 4,
-    nome: "Retrato Vintage",
-    descricao: "Aplica um visual retrô e cinematográfico à fotografia.",
-    categoria: "Estilo",
-    status: "Inativo",
-    usos: 7,
-    imagem: "https://placehold.co/120x120/9CA3AF/ffffff?text=AI",
-  },
-];
+
 
 export default function Efeitos() {
-  const [efeitos, setEfeitos] = useState<Efeito[]>(efeitosIniciais);
+  const {rows,reload,loading,error}=useRecords('efeitos');
+  const [editor,setEditor]=useState<Row|null>(null);
+  const efeitos:Efeito[]=rows.map(e=>({id:e.id,nome:e.nome,descricao:e.prompt,categoria:e.ui.categoria||'Estilo',status:e.ativo?'Ativo':'Inativo',usos:e.usos||0,imagem:e.scene_file?assetUrl('/static/scenes/'+e.scene_file):placeholder}));
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("Todos");
 
@@ -81,42 +49,15 @@ export default function Efeitos() {
     });
   }, [efeitos, busca, categoria]);
 
-  const alternarStatus = (id: number) => {
-    setEfeitos((atual) =>
-      atual.map((efeito) =>
-        efeito.id === id
-          ? {
-              ...efeito,
-              status: efeito.status === "Ativo" ? "Inativo" : "Ativo",
-            }
-          : efeito
-      )
-    );
-  };
-
-  const excluirEfeito = (id: number) => {
-    const efeito = efeitos.find((item) => item.id === id);
-
-    if (!efeito) return;
-
-    const confirmar = window.confirm(
-      `Deseja realmente excluir o efeito "${efeito.nome}"?`
-    );
-
-    if (confirmar) {
-      setEfeitos((atual) => atual.filter((item) => item.id !== id));
-    }
-  };
-
-  const adicionarEfeito = () => {
-    window.alert(
-      "A tela de cadastro de novo efeito será implementada na próxima etapa."
-    );
-  };
-
-  const editarEfeito = (nome: string) => {
-    window.alert(`Edição do efeito "${nome}" será implementada na próxima etapa.`);
-  };
+  const alternarStatus=(id:string)=>{const row=rows.find(e=>e.id===id);void perform(()=>adminApi.put('/efeitos/'+id,{ativo:!row?.ativo}),()=>{void reload();});};
+  const excluirEfeito=(id:string)=>{if(window.confirm('Excluir este efeito?'))void perform(()=>adminApi.delete('/efeitos/'+id),()=>{void reload();});};
+  const adicionarEfeito=()=>setEditor({nome:'',prompt:'',categoria:'Estilo',ativo:true,ordem:0});
+  const editarEfeito=(id:string)=>{const row=rows.find(e=>e.id===id);if(row)setEditor({...row,categoria:row.ui.categoria||'Estilo'});};
+  async function salvarEfeito(v:Row,file:File|null){
+    const payload={nome:v.nome,prompt:v.prompt,ativo:!!v.ativo,ordem:Number(v.ordem||0),ui:{categoria:v.categoria}};
+    const response=v.id?await adminApi.put('/efeitos/'+v.id,payload):await adminApi.post('/efeitos',payload);
+    if(file){const form=new FormData();form.append('file',file);await adminApi.post('/efeitos/'+response.data.id+'/scene',form);}await reload();
+  }
 
   const totalAtivos = efeitos.filter(
     (efeito) => efeito.status === "Ativo"
@@ -126,6 +67,8 @@ export default function Efeitos() {
 
   return (
     <Layout title="02. EFEITOS DE IA" currentPath="/efeitos">
+      <DataState loading={loading} error={error} count={efeitos.length} />
+      {editor && <Editor title={editor.id?'Editar efeito':'Adicionar efeito'} initial={editor} fields={[{name:'nome',label:'Nome',required:true},{name:'prompt',label:'Prompt / descrição',type:'textarea',required:true},{name:'categoria',label:'Categoria',options:['Avatar','Rosto','Cenário','Estilo']},{name:'ordem',label:'Ordem',type:'number'},{name:'ativo',label:'Ativo',type:'checkbox'},{name:'scene',label:'Imagem de cena (opcional)',type:'file'}]} onSave={salvarEfeito} onClose={()=>setEditor(null)}/>}
       {/* Cabeçalho da página */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
         <div>
@@ -325,7 +268,7 @@ export default function Efeitos() {
                   </button>
 
                   <button
-                    onClick={() => editarEfeito(efeito.nome)}
+                    onClick={() => editarEfeito(efeito.id)}
                     title="Editar efeito"
                     className="w-10 h-10 rounded-lg border border-gray-200 text-gray-500 flex items-center justify-center hover:bg-gray-50 hover:text-gray-900 transition-colors"
                   >
