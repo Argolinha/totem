@@ -67,6 +67,9 @@ app.mount(
 )
 
 
+app.mount("/static/frames", StaticFiles(directory=str(settings.FRAMES_DIR)), name="frames")
+app.mount("/static/scenes", StaticFiles(directory=str(settings.SCENES_DIR)), name="scenes")
+
 # ============================================================
 # ROTAS
 # ============================================================

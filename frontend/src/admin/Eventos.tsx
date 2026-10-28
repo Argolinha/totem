@@ -1,5 +1,7 @@
+import {useRecords, Feedback, useAdminUser, DataState, perform, Editor, dateBR, dateISO, notify} from './data';
+import {adminApi, Row} from './api';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   Search,
@@ -31,7 +33,7 @@ import {
 import Layout from "./layout";
 
 type Evento = {
-  id: number;
+  id: string;
   nome: string;
   tipo: string;
   cliente: string;
@@ -41,126 +43,6 @@ type Evento = {
   data: string;
   status: string;
   cor: string;
-};
-
-const eventosIniciais: Evento[] = [
-  {
-    id: 1,
-    nome: "Casamento Ana + Pedro",
-    tipo: "Casamento",
-    cliente: "Ana Paula",
-    local: "Cerimonial X Vila Velha - ES",
-    convidados: 180,
-    horario: "19:00",
-    data: "18/10/2026",
-    status: "Confirmado",
-    cor: "#6954EA",
-  },
-  {
-    id: 2,
-    nome: "Aniversário Mariana 15 anos",
-    tipo: "Aniversário",
-    cliente: "Mariana Silva",
-    local: "Espaço Festas Vitória - ES",
-    convidados: 150,
-    horario: "18:00",
-    data: "22/10/2026",
-    status: "Em preparação",
-    cor: "#4DA5ED",
-  },
-  {
-    id: 3,
-    nome: "Evento Corporativo",
-    tipo: "Corporativo",
-    cliente: "Empresa XPTO",
-    local: "Hotel Golden Serra - ES",
-    convidados: 250,
-    horario: "17:00",
-    data: "25/10/2026",
-    status: "Em produção",
-    cor: "#E8A51C",
-  },
-  {
-    id: 4,
-    nome: "Formatura Turma 2026",
-    tipo: "Formatura",
-    cliente: "Formatura UVV",
-    local: "UFES Vitória - ES",
-    convidados: 300,
-    horario: "20:00",
-    data: "08/11/2026",
-    status: "Confirmado",
-    cor: "#21B77D",
-  },
-  {
-    id: 5,
-    nome: "Aniversário João Lucas",
-    tipo: "Aniversário",
-    cliente: "João Lucas",
-    local: "Buffet Alegria Vila Velha - ES",
-    convidados: 120,
-    horario: "19:00",
-    data: "10/11/2026",
-    status: "Em negociação",
-    cor: "#E8A51C",
-  },
-];
-
-const diasCalendario = [
-  { dia: 27, mes: "set", atual: false },
-  { dia: 28, mes: "set", atual: false },
-  { dia: 29, mes: "set", atual: false },
-  { dia: 30, mes: "set", atual: false },
-  { dia: 1, atual: true },
-  { dia: 2, atual: true },
-  { dia: 3, atual: true },
-  { dia: 4, atual: true },
-  { dia: 5, atual: true },
-  { dia: 6, atual: true },
-  { dia: 7, atual: true },
-  { dia: 8, atual: true },
-  { dia: 9, atual: true },
-  { dia: 10, atual: true },
-  { dia: 11, atual: true },
-  { dia: 12, atual: true },
-  { dia: 13, atual: true },
-  { dia: 14, atual: true },
-  { dia: 15, atual: true },
-  { dia: 16, atual: true },
-  { dia: 17, atual: true },
-  { dia: 18, atual: true },
-  { dia: 19, atual: true },
-  { dia: 20, atual: true },
-  { dia: 21, atual: true },
-  { dia: 22, atual: true },
-  { dia: 23, atual: true },
-  { dia: 24, atual: true },
-  { dia: 25, atual: true },
-  { dia: 26, atual: true },
-  { dia: 27, atual: true },
-  { dia: 28, atual: true },
-  { dia: 29, atual: true },
-  { dia: 30, atual: true },
-  { dia: 31, atual: true },
-  { dia: 1, mes: "nov", atual: false },
-  { dia: 2, mes: "nov", atual: false },
-  { dia: 3, mes: "nov", atual: false },
-  { dia: 4, mes: "nov", atual: false },
-  { dia: 5, mes: "nov", atual: false },
-  { dia: 6, mes: "nov", atual: false },
-  { dia: 7, mes: "nov", atual: false },
-];
-
-const eventosCalendario: Record<
-  number,
-  { nome: string; cor: string; tipo: string }[]
-> = {
-  5: [{ nome: "Empresa XPTO", cor: "#4DA5ED", tipo: "corporativo" }],
-  10: [{ nome: "Aniversário Lucas", cor: "#7C3AED", tipo: "aniversario" }],
-  12: [{ nome: "Formatura UVV", cor: "#21B77D", tipo: "formatura" }],
-  18: [{ nome: "Casamento Ana + Pedro", cor: "#6954EA", tipo: "casamento" }],
-  22: [{ nome: "15 anos Mariana", cor: "#E95099", tipo: "aniversario" }],
-  25: [{ nome: "Evento Tech", cor: "#E8A51C", tipo: "corporativo" }],
 };
 
 function CardResumo({
@@ -230,40 +112,39 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function Calendario({
-  selecionado,
-  setSelecionado,
-}: {
-  selecionado: number;
-  setSelecionado: (dia: number) => void;
-}) {
-  const [visualizacao, setVisualizacao] = useState("Mês");
-
+function Calendario({selecionado,setSelecionado,eventos:allEvents,mes,setMes}:{selecionado:number;setSelecionado:(dia:number)=>void;eventos:Evento[];mes:Date;setMes:(mes:Date)=>void}) {
+  const [visualizacao,setVisualizacao]=useState('Mês');
+  const first=new Date(mes.getFullYear(),mes.getMonth(),1);
+  const count=new Date(mes.getFullYear(),mes.getMonth()+1,0).getDate();
+  const diasCalendario=Array.from({length:Math.ceil((first.getDay()+count)/7)*7},(_,i)=>{const date=new Date(mes.getFullYear(),mes.getMonth(),i-first.getDay()+1);return {dia:date.getDate(),atual:date.getMonth()===mes.getMonth()};});
+  const eventosCalendario:Record<number,Evento[]>={};
+  allEvents.forEach(e=>{const [day,month,year]=e.data.split('/').map(Number);if(month===mes.getMonth()+1&&year===mes.getFullYear())(eventosCalendario[day]??=[]).push(e);});
+  const selectedEvents=allEvents.filter(e=>{const [day,month,year]=e.data.split('/').map(Number);return month===mes.getMonth()+1&&year===mes.getFullYear()&&(visualizacao==='Dia'?day===selecionado:Math.floor((day+first.getDay()-1)/7)===Math.floor((selecionado+first.getDay()-1)/7));});
   return (
     <div className="rounded-xl border border-[#E7EAF3] bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-[#EDF0F6] p-3 sm:p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              type="button"
+              type="button" onClick={()=>setMes(new Date(mes.getFullYear(),mes.getMonth()-1,1))}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E8F0] text-[#3D4560] hover:bg-[#F5F3FF]"
             >
               <ChevronLeft size={16} />
             </button>
 
             <h3 className="text-[14px] font-bold text-[#252D44]">
-              Outubro 2026
+              {mes.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}
             </h3>
 
             <button
-              type="button"
+              type="button" onClick={()=>setMes(new Date(mes.getFullYear(),mes.getMonth()+1,1))}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#E5E8F0] text-[#3D4560] hover:bg-[#F5F3FF]"
             >
               <ChevronRight size={16} />
             </button>
 
             <button
-              type="button"
+              type="button" onClick={()=>{setMes(new Date());setSelecionado(new Date().getDate());}}
               className="hidden rounded-md bg-[#F0EAFE] px-3 py-2 text-[10px] font-semibold text-[#6838E6] sm:block"
             >
               Hoje
@@ -289,7 +170,7 @@ function Calendario({
         </div>
 
         <button
-          type="button"
+          type="button" onClick={()=>{setMes(new Date());setSelecionado(new Date().getDate());}}
           className="w-fit rounded-md bg-[#F0EAFE] px-3 py-2 text-[10px] font-semibold text-[#6838E6] sm:hidden"
         >
           Hoje
@@ -365,7 +246,7 @@ function Calendario({
             </div>
           ) : (
             <div className="flex min-h-[220px] items-center justify-center text-sm text-[#8991A6]">
-              Visualização de {visualizacao.toLowerCase()}
+              <div className="w-full p-4 space-y-3">{selectedEvents.length?selectedEvents.map(e=><button key={e.id} onClick={()=>setSelecionado(Number(e.data.split("/")[0]))} className="block text-left w-full rounded-lg border p-3"><strong>{e.data} · {e.horario}</strong> {e.nome}</button>):"Nenhum evento neste período."}</div>
             </div>
           )}
         </div>
@@ -376,10 +257,10 @@ function Calendario({
 
 function DetalhesEvento({
   evento,
-  onClose,
+  onClose, onEdit, onDuplicate, onDelete,
 }: {
   evento: Evento;
-  onClose: () => void;
+  onClose: () => void; onEdit:()=>void; onDuplicate:()=>void; onDelete:()=>void;
 }) {
   return (
     <div className="rounded-xl border border-[#E7EAF3] bg-white p-3 shadow-sm sm:p-4">
@@ -403,11 +284,11 @@ function DetalhesEvento({
         </div>
 
         <div className="absolute left-2 top-2 rounded-md bg-[#13BD79] px-2 py-1 text-[9px] font-semibold text-white">
-          Confirmado
+          {evento.status}
         </div>
 
         <button
-          type="button"
+          type="button" onClick={onEdit}
           className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#7139E7] px-2 py-1.5 text-[9px] font-semibold text-white"
         >
           <Pencil size={11} />
@@ -423,9 +304,9 @@ function DetalhesEvento({
         </div>
 
         <div className="shrink-0 rounded-lg bg-[#F4F5FA] px-3 py-2 text-center">
-          <p className="text-[15px] font-bold text-[#20283E]">18</p>
+          <p className="text-[15px] font-bold text-[#20283E]">{evento.data.split("/")[0]}</p>
           <p className="text-[9px] font-bold uppercase text-[#69738C]">
-            OUT
+            {evento.data.split("/")[1]}
           </p>
         </div>
       </div>
@@ -435,7 +316,7 @@ function DetalhesEvento({
           <Heart size={14} className="shrink-0 text-[#68738E]" />
           <span className="w-[80px] shrink-0 text-[#7B849B]">Cliente</span>
           <span className="font-semibold text-[#30384F]">
-            Ana Paula
+            {evento.cliente}
           </span>
         </div>
 
@@ -443,7 +324,7 @@ function DetalhesEvento({
           <Clock3 size={14} className="shrink-0 text-[#68738E]" />
           <span className="w-[80px] shrink-0 text-[#7B849B]">Horário</span>
           <span className="font-semibold text-[#30384F]">
-            Sábado 19:00 às 00:00
+            {evento.horario}
           </span>
         </div>
 
@@ -451,7 +332,7 @@ function DetalhesEvento({
           <MapPin size={14} className="shrink-0 text-[#68738E]" />
           <span className="w-[80px] shrink-0 text-[#7B849B]">Local</span>
           <span className="font-semibold text-[#30384F]">
-            Cerimonial X Vila Velha - ES
+            {evento.local}
           </span>
         </div>
 
@@ -461,7 +342,7 @@ function DetalhesEvento({
             Tipo de evento
           </span>
           <span className="font-semibold text-[#30384F]">
-            Casamento
+            {evento.tipo}
           </span>
         </div>
 
@@ -471,7 +352,7 @@ function DetalhesEvento({
             Convidados
           </span>
           <span className="font-semibold text-[#30384F]">
-            180 pessoas
+            {evento.convidados} pessoas
           </span>
         </div>
 
@@ -481,7 +362,7 @@ function DetalhesEvento({
             Equipamento
           </span>
           <span className="font-semibold text-[#30384F]">
-            Totem Principal + Impressora Fujifilm ASK 300
+            {((evento as any).equipamento)||"Não informado"}
           </span>
         </div>
 
@@ -491,7 +372,7 @@ function DetalhesEvento({
             Operador responsável
           </span>
           <span className="font-semibold text-[#30384F]">
-            Larissa Pereira
+            {((evento as any).operador)||"Não informado"}
           </span>
         </div>
 
@@ -502,13 +383,13 @@ function DetalhesEvento({
           </span>
           <div className="flex flex-wrap gap-1">
             <span className="rounded bg-[#F0EAFE] px-2 py-1 text-[9px] font-semibold text-[#7139E7]">
-              Avatar Cartoon
+              {((evento as any).efeitos)||"Não informado"}
             </span>
             <span className="rounded bg-[#F0EAFE] px-2 py-1 text-[9px] font-semibold text-[#7139E7]">
-              Cenário Mágico
+              —
             </span>
             <span className="rounded bg-[#F0EAFE] px-2 py-1 text-[9px] font-semibold text-[#7139E7]">
-              Preto e Branco
+              —
             </span>
           </div>
         </div>
@@ -519,10 +400,10 @@ function DetalhesEvento({
             Moldura
           </span>
           <span className="font-semibold text-[#30384F]">
-            Casamento Flora
+            {((evento as any).moldura)||"Não informada"}
           </span>
           <button
-            type="button"
+            type="button" onClick={()=>window.location.assign("/admin/molduras")}
             className="text-[9px] font-semibold text-[#7139E7]"
           >
             Visualizar
@@ -535,8 +416,7 @@ function DetalhesEvento({
             Observações
           </span>
           <span className="font-semibold leading-4 text-[#30384F]">
-            Cliente solicitou personalização com as iniciais A + P.
-            Chegar 2h antes para montagem.
+            {((evento as any).observacoes)||"Nenhuma observação."}
           </span>
         </div>
       </div>
@@ -548,21 +428,21 @@ function DetalhesEvento({
           </h4>
 
           <span className="text-[12px] font-bold text-[#6937E2]">
-            100%
+            {evento.status==="Realizado"?"100%":evento.status==="Em produção"?"80%":"Em andamento"}
           </span>
         </div>
 
         <div className="relative mb-4">
           <div className="absolute left-[10px] right-[10px] top-3 h-1 rounded-full bg-[#DDE1EC]" />
-          <div className="absolute left-[10px] top-3 h-1 w-[70%] rounded-full bg-[#20B77D]" />
+          <div className="absolute left-[10px] top-3 h-1 rounded-full bg-[#20B77D]" style={{width:evento.status==="Realizado"?"95%":evento.status==="Em produção"?"70%":evento.status==="Em preparação"?"45%":"20%"}} />
 
           <div className="relative flex justify-between">
             {[
               { label: "Orçamento", ativo: true },
-              { label: "Confirmado", ativo: true },
-              { label: "Em preparação", ativo: true },
-              { label: "Em produção", ativo: true },
-              { label: "Concluído", ativo: false },
+              { label: "Confirmado", ativo: evento.status !== "Cancelado" },
+              { label: "Em preparação", ativo: ["Em preparação","Em produção","Realizado"].includes(evento.status) },
+              { label: "Em produção", ativo: ["Em produção","Realizado"].includes(evento.status) },
+              { label: "Concluído", ativo: evento.status === "Realizado" },
             ].map((etapa) => (
               <div
                 key={etapa.label}
@@ -588,7 +468,7 @@ function DetalhesEvento({
 
         <div className="flex flex-wrap gap-2">
           <button
-            type="button"
+            type="button" onClick={()=>window.location.assign('/?evento='+evento.id)}
             className="flex h-9 items-center justify-center gap-2 rounded-md bg-[#6B32E8] px-3 text-[10px] font-semibold text-white hover:bg-[#5923CE]"
           >
             <Camera size={13} />
@@ -596,7 +476,7 @@ function DetalhesEvento({
           </button>
 
           <button
-            type="button"
+            type="button" onClick={onEdit}
             className="flex h-9 items-center justify-center gap-2 rounded-md border border-[#E3E6EF] px-3 text-[10px] font-semibold text-[#59627B] hover:bg-[#F8F7FD]"
           >
             <Pencil size={13} />
@@ -604,7 +484,7 @@ function DetalhesEvento({
           </button>
 
           <button
-            type="button"
+            type="button" onClick={onDuplicate}
             className="flex h-9 items-center justify-center gap-2 rounded-md border border-[#E3E6EF] px-3 text-[10px] font-semibold text-[#59627B] hover:bg-[#F8F7FD]"
           >
             <Copy size={13} />
@@ -612,10 +492,10 @@ function DetalhesEvento({
           </button>
 
           <button
-            type="button"
+            type="button" onClick={onDelete}
             className="flex h-9 items-center justify-center gap-2 rounded-md border border-[#E3E6EF] px-3 text-[10px] font-semibold text-[#59627B] hover:bg-[#F8F7FD]"
           >
-            Mais ações
+            Excluir evento
             <Down size={12} />
           </button>
         </div>
@@ -624,7 +504,7 @@ function DetalhesEvento({
   );
 }
 
-function TabelaEventos({ eventos }: { eventos: Evento[] }) {
+function TabelaEventos({ eventos, onSelect, onAll }: { eventos: Evento[]; onSelect:(evento:Evento)=>void; onAll:()=>void }) {
   return (
     <div className="rounded-xl border border-[#E7EAF3] bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-[#EDF0F6] px-4 py-3">
@@ -633,7 +513,7 @@ function TabelaEventos({ eventos }: { eventos: Evento[] }) {
         </h3>
 
         <button
-          type="button"
+          type="button" onClick={onAll}
           className="text-[10px] font-semibold text-[#7139E7] hover:underline"
         >
           Ver todos
@@ -710,7 +590,7 @@ function TabelaEventos({ eventos }: { eventos: Evento[] }) {
 
                   <td className="px-3 py-2">
                     <button
-                      type="button"
+                      type="button" aria-label={`Editar ${evento.nome}`} onClick={()=>onSelect(evento)}
                       className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E5E8F0] text-[#7D879C] hover:bg-[#F2F0FF]"
                     >
                       <MoreHorizontal size={14} />
@@ -727,11 +607,21 @@ function TabelaEventos({ eventos }: { eventos: Evento[] }) {
 }
 
 export default function Eventos() {
+  const user=useAdminUser();
   const [aba, setAba] = useState("Calendário");
   const [busca, setBusca] = useState("");
-  const [selecionado, setSelecionado] = useState(18);
+  const [selecionado, setSelecionado] = useState(new Date().getDate());
+  const [mes,setMes]=useState(new Date());
+  const [selectedId,setSelectedId]=useState<string|null>(null);
+  const [editor,setEditor]=useState<Row|null>(null);
   const [mostrarNovo, setMostrarNovo] = useState(false);
-  const [eventos, setEventos] = useState(eventosIniciais);
+  const {rows,reload,loading,error}=useRecords('eventos');const crm=useRecords('clientes');
+  const eventos:Evento[]=rows.map(e=>({...e.ui,id:e.id,nome:e.nome,tipo:e.ui.tipo||'Outro',cliente:crm.rows.find(c=>c.id===e.cliente_id)?.nome||'Cliente',local:e.local||'A definir',convidados:Number(e.ui.convidados)||0,horario:e.hora_inicio||'A definir',data:dateBR(e.data_evento),status:e.status==='realizado'?'Realizado':e.status==='cancelado'?'Cancelado':e.ui.status||'Confirmado',cor:e.ui.cor||'#6954EA',observacoes:e.observacoes}));
+  const activeEvent=eventos.find(e=>e.id===selectedId)||eventos.find(e=>Number(e.data.split('/')[0])===selecionado && Number(e.data.split('/')[1])===mes.getMonth()+1 && Number(e.data.split('/')[2])===mes.getFullYear());
+  function editEvent(event:Evento){const row=rows.find(e=>e.id===event.id)!;setEditor({...row,...row.ui,data:row.data_evento.slice(0,10),horario:row.hora_inicio||'',cliente:event.cliente,status:event.status});}
+  async function saveEvent(v:Row){const customer=crm.rows.find(c=>c.nome.toLowerCase()===String(v.cliente).toLowerCase());if(!customer)throw new Error('Selecione um cliente cadastrado.');await adminApi.put('/eventos/'+v.id,{nome:v.nome,cliente_id:customer.id,data_evento:dateISO(v.data),hora_inicio:v.horario||null,local:v.local||null,observacoes:v.observacoes||null,status:v.status==='Realizado'?'realizado':v.status==='Cancelado'?'cancelado':'agendado',ui:{tipo:v.tipo,convidados:Number(v.convidados)||0,status:v.status,operador:v.operador||'',equipamento:v.equipamento||'',efeitos:v.efeitos||'',moldura:v.moldura||''}});await reload();}
+  function duplicateEvent(event:Evento){const row=rows.find(e=>e.id===event.id)!;void perform(()=>adminApi.post('/eventos',{cliente_id:row.cliente_id,nome:row.nome+' (cópia)',data_evento:row.data_evento,hora_inicio:row.hora_inicio,local:row.local,observacoes:row.observacoes,ui:row.ui}),()=>{void reload();});}
+
 
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState("Casamento");
@@ -747,40 +637,21 @@ export default function Eventos() {
       .includes(busca.toLowerCase())
   );
 
-  const criarEvento = () => {
-    if (!nome.trim() || !cliente.trim() || !data) {
-      alert("Preencha nome, cliente e data.");
-      return;
-    }
-
-    const partes = data.split("-");
-
-    const novoEvento: Evento = {
-      id: Date.now(),
-      nome,
-      tipo,
-      cliente,
-      local: local || "A definir",
-      convidados: Number(convidados) || 0,
-      horario: horario || "A definir",
-      data: `${partes[2]}/${partes[1]}/${partes[0]}`,
-      status: "Em preparação",
-      cor: "#6954EA",
-    };
-
-    setEventos((atual) => [...atual, novoEvento]);
-
-    setNome("");
-    setCliente("");
-    setData("");
-    setHorario("");
-    setLocal("");
-    setConvidados("");
-    setMostrarNovo(false);
+  const [saving,setSaving]=useState(false);
+  const criarEvento=async()=>{
+    const customer=crm.rows.find(c=>c.nome.toLowerCase()===cliente.trim().toLowerCase());
+    if(!nome.trim()||!customer||!data){notify('Preencha nome e data e selecione um cliente já cadastrado.',true);return;}
+    if(saving)return;setSaving(true);
+    const ok=await perform(()=>adminApi.post('/eventos',{nome,cliente_id:customer.id,data_evento:dateISO(data),hora_inicio:horario||null,local:local||null,ui:{tipo,convidados:Number(convidados)||0,status:'Em preparação'}}),()=>{void reload();});
+    if(ok){setMostrarNovo(false);setNome('');setCliente('');setData('');setHorario('');setLocal('');setConvidados('');}setSaving(false);
   };
 
   return (
     <Layout title="01. EVENTOS" currentPath="/eventos">
+      <DataState loading={loading||crm.loading} error={error||crm.error} count={eventos.length}/>
+      <datalist id="event-clients">{crm.rows.map(c=><option key={c.id} value={c.nome}/>)}</datalist>
+      {editor&&<Editor title="Editar evento" initial={editor} fields={[{name:'nome',label:'Nome',required:true},{name:'cliente',label:'Cliente',options:crm.rows.map(c=>c.nome)},{name:'tipo',label:'Tipo',options:['Casamento','Aniversário','Corporativo','Formatura','15 anos','Outro']},{name:'data',label:'Data',type:'date',required:true},{name:'horario',label:'Horário',type:'time'},{name:'local',label:'Local'},{name:'convidados',label:'Convidados',type:'number'},{name:'status',label:'Status',options:['Confirmado','Em preparação','Em produção','Realizado','Cancelado']},{name:'operador',label:'Operador responsável'},{name:'equipamento',label:'Equipamento'},{name:'efeitos',label:'Experiências IA'},{name:'moldura',label:'Moldura'},{name:'observacoes',label:'Observações',type:'textarea'}]} onSave={saveEvent} onClose={()=>setEditor(null)}/>}
+
       <div className="min-h-screen bg-[#F8F9FC] text-[#20283E]">
         {/* CABEÇALHO */}
         <header className="border-b border-[#E7EAF3] bg-white px-4 py-4 sm:px-6 lg:px-8">
@@ -818,7 +689,7 @@ export default function Eventos() {
 
               <button
                 type="button"
-                title="Notificações"
+                title="Atualizar eventos" onClick={()=>{void reload();}}
                 className="relative rounded-lg p-2 text-[#30394F] hover:bg-[#F4F2FC]"
               >
                 <Bell size={19} />
@@ -832,16 +703,16 @@ export default function Eventos() {
                 className="flex items-center gap-2 rounded-lg p-1 hover:bg-[#F5F3FC]"
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6D36DF] text-sm font-medium text-white">
-                  L
+                  {user.nome.charAt(0)}
                 </div>
 
                 <div className="hidden text-left sm:block">
                   <p className="text-[11px] font-bold leading-4 text-[#30394F]">
-                    Larissa
+                    {user.nome}
                   </p>
 
                   <p className="text-[9px] text-[#7D879E]">
-                    Administradora
+                    {user.role}
                   </p>
                 </div>
 
@@ -872,9 +743,9 @@ export default function Eventos() {
             <CardResumo
               icon={<CalendarDays size={21} />}
               titulo="Eventos este mês"
-              valor="12"
-              crescimento="↑ 33%"
-              descricao="em relação ao mês anterior"
+              valor={String(eventos.filter(e=>Number(e.data.split("/")[1])===mes.getMonth()+1 && Number(e.data.split("/")[2])===mes.getFullYear()).length)}
+              crescimento=""
+              descricao="no mês selecionado"
               cor="#6D36DF"
               fundo="#F0EAFE"
             />
@@ -882,8 +753,8 @@ export default function Eventos() {
             <CardResumo
               icon={<Clock3 size={21} />}
               titulo="Próximos eventos"
-              valor="3"
-              crescimento="↑"
+              valor={String(eventos.filter(e=>{const t=new Date(dateISO(e.data)||0).getTime();return t>=Date.now()&&t<Date.now()+7*86400000;}).length)}
+              crescimento=""
               descricao="esta semana"
               cor="#E8A51C"
               fundo="#FFF4D9"
@@ -892,8 +763,8 @@ export default function Eventos() {
             <CardResumo
               icon={<CheckCircle2 size={21} />}
               titulo="Eventos realizados"
-              valor="25"
-              crescimento="↑ 18%"
+              valor={String(eventos.filter(e=>e.status==="Realizado").length)}
+              crescimento=""
               descricao="no ano"
               cor="#21B77D"
               fundo="#E5FAF1"
@@ -902,7 +773,7 @@ export default function Eventos() {
             <CardResumo
               icon={<Users size={21} />}
               titulo="Pessoas fotografadas"
-              valor="2.850"
+              valor="Não medido"
               crescimento=""
               descricao="neste ano"
               cor="#7139E7"
@@ -950,26 +821,24 @@ export default function Eventos() {
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.55fr_1fr]">
               <div className="min-w-0">
                 <Calendario
+                  eventos={eventosFiltrados} mes={mes} setMes={setMes}
                   selecionado={selecionado}
-                  setSelecionado={setSelecionado}
+                  setSelecionado={(dia)=>{setSelecionado(dia);setSelectedId(null);}}
                 />
 
                 <div className="mt-4">
-                  <TabelaEventos eventos={eventosFiltrados} />
+                  <TabelaEventos eventos={eventosFiltrados} onSelect={event=>{setSelectedId(event.id);editEvent(event);}} onAll={()=>setAba("Lista de eventos")} />
                 </div>
               </div>
 
               <div className="min-w-0">
-                <DetalhesEvento
-                  evento={eventos[0]}
-                  onClose={() => setSelecionado(0)}
-                />
+                {activeEvent ? <DetalhesEvento evento={activeEvent} onClose={()=>setSelectedId(null)} onEdit={()=>editEvent(activeEvent)} onDuplicate={()=>duplicateEvent(activeEvent)} onDelete={()=>{if(window.confirm('Excluir este evento?'))void perform(()=>adminApi.delete('/eventos/'+activeEvent.id),()=>{setSelectedId(null);void reload();});}}/>:<div className="rounded-xl border bg-white p-6 text-sm text-gray-500">Selecione uma data com evento no calendário.</div>}
               </div>
             </div>
           )}
 
           {aba === "Lista de eventos" && (
-            <TabelaEventos eventos={eventosFiltrados} />
+            <TabelaEventos eventos={eventosFiltrados} onSelect={event=>{setSelectedId(event.id);editEvent(event);}} onAll={()=>setAba("Lista de eventos")} />
           )}
 
           {aba === "Agenda da equipe" && (
@@ -984,7 +853,7 @@ export default function Eventos() {
               </h3>
 
               <p className="mt-2 text-sm text-[#7D879E]">
-                Organize os operadores e responsáveis pelos eventos.
+                {eventosFiltrados.map(e=><span key={e.id} className="block py-2">{e.data} · {e.nome} · {(e as any).operador||"Operador não informado"}</span>)}
               </p>
             </div>
           )}
@@ -994,6 +863,7 @@ export default function Eventos() {
         {mostrarNovo && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#202038]/40 px-4 py-6 backdrop-blur-sm">
             <div className="max-h-[90vh] w-full max-w-[480px] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+              <Feedback/>
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-[#292D42]">
@@ -1034,7 +904,7 @@ export default function Eventos() {
                   </label>
 
                   <input
-                    value={cliente}
+                    list="event-clients" value={cliente}
                     onChange={(e) => setCliente(e.target.value)}
                     placeholder="Nome do cliente"
                     className="h-10 w-full rounded-lg border border-[#E1E3ED] px-3 text-sm outline-none focus:border-[#8B5CF6]"
@@ -1126,7 +996,7 @@ export default function Eventos() {
 
                 <button
                   type="button"
-                  onClick={criarEvento}
+                  disabled={saving} onClick={criarEvento}
                   className="h-10 flex-1 rounded-lg bg-[#6B32E8] text-sm font-semibold text-white hover:bg-[#5923CE]"
                 >
                   Criar evento

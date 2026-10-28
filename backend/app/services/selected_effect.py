@@ -1,6 +1,6 @@
 """Catálogo comum à escolha inicial e ao processamento de uma única foto."""
 import unicodedata
-from app.models import Efeito
+from app.models import Efeito, AdminPresentation
 from app.services.effect_presets import PRESETS
 
 
@@ -12,16 +12,26 @@ def effect_key(value):
 def available_effects(db):
     rows = db.query(Efeito).order_by(Efeito.ordem.asc()).all()
     configured = {effect_key(e.nome): e for e in rows}
+    preset_rows = {e.ui.get("preset_id"): e for e in rows if e.ui.get("preset_id")}
+    managed = db.get(AdminPresentation, "catalog:admin-real-v1") is not None
+    used = set()
     result = []
     for preset in PRESETS:
+        custom = preset_rows.get(preset["id"]) or configured.get(effect_key(preset["name"]))
+        if custom is None and managed:
+            continue
         e = dict(preset)
-        custom = configured.get(effect_key(e["name"]))
         if custom is not None:
+            used.add(custom.id)
             if not custom.ativo:
                 continue
-            e.update(prompt=custom.prompt, scene_file=custom.scene_file,
+            e.update(name=custom.nome, prompt=custom.prompt, scene_file=custom.scene_file,
                      provider_preferido=custom.provider_preferido)
         result.append(e)
+    for row in rows:
+        if row.ativo and row.id not in used:
+            result.append({"id": row.id, "name": row.nome, "prompt": row.prompt,
+                           "scene_file": row.scene_file, "provider_preferido": row.provider_preferido})
     return result
 
 

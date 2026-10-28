@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import {adminApi, errorMessage} from './api';
+import {notify} from './data';
+import React, { useEffect, useState } from "react";
 import Layout from "./layout";
 import {
   Settings,
@@ -21,13 +23,9 @@ export default function Config() {
   const [modoNoturno, setModoNoturno] = useState(false);
   const [salvo, setSalvo] = useState(false);
 
-  const salvarConfiguracoes = () => {
-    setSalvo(true);
-
-    setTimeout(() => {
-      setSalvo(false);
-    }, 2500);
-  };
+  const [busy,setBusy]=useState(false);const [loaded,setLoaded]=useState(false);
+  useEffect(()=>{adminApi.get('/preferences/config').then(r=>{const v=r.data;if(v.nomeTotem!==undefined)setNomeTotem(v.nomeTotem);if(v.qualidade!==undefined)setQualidade(v.qualidade);if(v.contagem!==undefined)setContagem(v.contagem);if(v.impressaoAutomatica!==undefined)setImpressaoAutomatica(v.impressaoAutomatica);if(v.som!==undefined)setSom(v.som);if(v.modoNoturno!==undefined)setModoNoturno(v.modoNoturno);setLoaded(true);}).catch(e=>notify(errorMessage(e),true));},[]);
+  const salvarConfiguracoes=async()=>{if(busy||!loaded)return;setBusy(true);setSalvo(false);try{await adminApi.put('/preferences/config',{nomeTotem,qualidade,contagem,impressaoAutomatica,som,modoNoturno});setSalvo(true);}catch(e){notify(errorMessage(e),true);}finally{setBusy(false);}};
 
   return (
     <Layout title="06. CONFIGURAÇÃO" currentPath="/config">
@@ -202,13 +200,13 @@ export default function Config() {
                 </p>
 
                 <p className="text-xs text-gray-500 mt-1">
-                  Imprimir automaticamente após a captura da foto.
+                  Integração com impressora física pendente.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() =>
+                disabled title="Integração com impressora física pendente" onClick={() =>
                   setImpressaoAutomatica(!impressaoAutomatica)
                 }
                 className={`relative w-12 h-6 rounded-full transition-colors ${
@@ -348,7 +346,7 @@ export default function Config() {
 
           <button
             type="button"
-            onClick={salvarConfiguracoes}
+            disabled={busy||!loaded} onClick={salvarConfiguracoes}
             className="flex items-center gap-2 px-6 py-3 rounded-lg bg-vive-primary text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm"
           >
             <Save size={18} />

@@ -1,3 +1,5 @@
+import {adminApi, logout} from './api';
+import {useEffect} from 'react';
 
 import React, { useState } from 'react';
 import {
@@ -44,6 +46,8 @@ const menuItems: MenuItem[] = [
 ];
 
 export default function Sidebar({ currentPath = '/admin/dashboard' }: SidebarProps) {
+  const [user, setUser] = useState({nome: '', email: ''});
+  useEffect(() => {adminApi.get('/auth/me').then(r=>setUser(r.data)).catch(()=>{});}, []);
   const [clientesAberto, setClientesAberto] = useState(
     currentPath.startsWith('/admin/clientes')
   );
@@ -156,11 +160,11 @@ export default function Sidebar({ currentPath = '/admin/dashboard' }: SidebarPro
 
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-gray-900 truncate">
-              Admin
+              {user.nome}
             </p>
 
             <p className="text-xs text-gray-500 truncate">
-              admin@viveai.com
+              {user.email}
             </p>
           </div>
 
@@ -168,6 +172,7 @@ export default function Sidebar({ currentPath = '/admin/dashboard' }: SidebarPro
 
         <button
           type="button"
+          onClick={logout}
           className="w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
         >
           Sair

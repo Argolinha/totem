@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import {useRecords, DataState, perform, notify} from './data';
+import {adminApi} from './api';
+import React, { useEffect, useState } from "react";
 import Layout from "./layout";
 import {
   Printer,
@@ -13,7 +15,7 @@ import {
 } from "lucide-react";
 
 interface Job {
-  id: number;
+  id: string;
   cliente: string;
   arquivo: string;
   horario: string;
@@ -22,90 +24,17 @@ interface Job {
 }
 
 export default function Fila() {
-  const [jobs, setJobs] = useState<Job[]>([
-    {
-      id: 1,
-      cliente: "Evento Corporativo",
-      arquivo: "foto_001.jpg",
-      horario: "14:32",
-      copias: 2,
-      status: "Imprimindo",
-    },
-    {
-      id: 2,
-      cliente: "Casamento Ana & Lucas",
-      arquivo: "foto_002.jpg",
-      horario: "14:35",
-      copias: 1,
-      status: "Aguardando",
-    },
-    {
-      id: 3,
-      cliente: "Aniversário 15 Anos",
-      arquivo: "foto_003.jpg",
-      horario: "14:37",
-      copias: 3,
-      status: "Aguardando",
-    },
-    {
-      id: 4,
-      cliente: "Evento Corporativo",
-      arquivo: "foto_004.jpg",
-      horario: "14:40",
-      copias: 1,
-      status: "Concluído",
-    },
-    {
-      id: 5,
-      cliente: "Formatura",
-      arquivo: "foto_005.jpg",
-      horario: "14:42",
-      copias: 2,
-      status: "Erro",
-    },
-  ]);
+  const {rows,reload,loading,error}=useRecords('sessions?limit=500');
+  const [hidden,setHidden]=useState<string[]>(()=>JSON.parse(sessionStorage.getItem('vive-hidden-completed')||'[]'));
+  useEffect(()=>{const timer=setInterval(()=>{void reload();},15000);return()=>clearInterval(timer);},[reload]);
+  const jobs:Job[]=rows.filter(s=>!hidden.includes(s.id)).map(s=>({id:s.id,cliente:s.evento_id||s.cliente_id||s.totem_id,arquivo:s.results?.[0]?.split('/').pop()||'Foto em processamento',horario:new Date(s.created_at).toLocaleTimeString('pt-BR'),copias:s.printed?1:0,status:s.status==='error'?'Erro':s.status==='printing'?'Imprimindo':s.printed||['ready','chosen','printed'].includes(s.status)?'Concluído':'Aguardando'}));
 
   const [filtro, setFiltro] = useState("Todos");
 
-  const limparConcluidos = () => {
-    setJobs((atual) =>
-      atual.filter((job) => job.status !== "Concluído")
-    );
-  };
-
-  const cancelar = (id: number) => {
-    setJobs((atual) => atual.filter((job) => job.id !== id));
-  };
-
-  const tentarNovamente = (id: number) => {
-    setJobs((atual) =>
-      atual.map((job) =>
-        job.id === id
-          ? { ...job, status: "Aguardando" }
-          : job
-      )
-    );
-  };
-
-  const iniciarImpressao = (id: number) => {
-    setJobs((atual) =>
-      atual.map((job) =>
-        job.id === id
-          ? { ...job, status: "Imprimindo" }
-          : job
-      )
-    );
-
-    setTimeout(() => {
-      setJobs((atual) =>
-        atual.map((job) =>
-          job.id === id
-            ? { ...job, status: "Concluído" }
-            : job
-        )
-      );
-    }, 2500);
-  };
+  const limparConcluidos=()=>{const ids=[...hidden,...jobs.filter(j=>j.status==='Concluído').map(j=>j.id)];setHidden(ids);sessionStorage.setItem('vive-hidden-completed',JSON.stringify(ids));notify('Concluídos ocultos nesta sessão. O histórico foi preservado.');};
+  const cancelar=(id:string)=>{if(window.confirm('Cancelar esta sessão aguardando processamento?'))void perform(()=>adminApi.post('/sessions/'+id+'/cancel'),()=>{void reload();});};
+  const tentarNovamente=(id:string)=>{void perform(()=>adminApi.post('/sessions/'+id+'/reprocess'),()=>{void reload();});};
+  const iniciarImpressao=(_id:string)=>notify('A impressão física ainda não está integrada neste projeto.',true);
 
   const jobsFiltrados =
     filtro === "Todos"
@@ -152,6 +81,7 @@ export default function Fila() {
       title="05. FILA DE IMPRESSÃO"
       currentPath="/fila"
     >
+      <DataState loading={loading} error={error} count={jobs.length}/>
       <div className="space-y-6">
 
         {/* Cabeçalho */}
@@ -176,7 +106,7 @@ export default function Fila() {
             </button>
 
             <button
-              onClick={() => window.alert("Fila atualizada!")}
+              onClick={()=>{void reload();}}
               className="flex items-center gap-2 px-4 py-2 bg-vive-primary text-white rounded-lg hover:opacity-90"
             >
               <RefreshCw size={17} />

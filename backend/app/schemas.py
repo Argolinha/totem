@@ -8,6 +8,10 @@ from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
+class PresentationFields(BaseModel):
+    ui: dict = Field(default_factory=dict)
+
+
 # ============================================================
 # TOTEM / SESSÃO
 # ============================================================
@@ -93,7 +97,7 @@ class TokenResponse(BaseModel):
 # CLIENTES
 # ============================================================
 
-class ClienteCreate(BaseModel):
+class ClienteCreate(PresentationFields):
     nome: str
     email: Optional[str] = None
     telefone: Optional[str] = None
@@ -105,7 +109,7 @@ class ClienteCreate(BaseModel):
     ativo: bool = True
 
 
-class ClienteUpdate(BaseModel):
+class ClienteUpdate(PresentationFields):
     nome: Optional[str] = None
     email: Optional[str] = None
     telefone: Optional[str] = None
@@ -117,7 +121,7 @@ class ClienteUpdate(BaseModel):
     ativo: Optional[bool] = None
 
 
-class ClienteResponse(BaseModel):
+class ClienteResponse(PresentationFields):
     id: str
     nome: str
     email: Optional[str] = None
@@ -138,7 +142,7 @@ class ClienteResponse(BaseModel):
 # EVENTOS
 # ============================================================
 
-class EventoCreate(BaseModel):
+class EventoCreate(PresentationFields):
     cliente_id: str
     nome: str
     local: Optional[str] = None
@@ -152,7 +156,7 @@ class EventoCreate(BaseModel):
     observacoes: Optional[str] = None
 
 
-class EventoUpdate(BaseModel):
+class EventoUpdate(PresentationFields):
     cliente_id: Optional[str] = None
     nome: Optional[str] = None
     local: Optional[str] = None
@@ -166,7 +170,7 @@ class EventoUpdate(BaseModel):
     observacoes: Optional[str] = None
 
 
-class EventoResponse(BaseModel):
+class EventoResponse(PresentationFields):
     id: str
     cliente_id: str
     orcamento_id: Optional[str] = None
@@ -204,7 +208,7 @@ class ItemOrcamentoResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class OrcamentoCreate(BaseModel):
+class OrcamentoCreate(PresentationFields):
     cliente_id: str
     titulo: str
     data_evento_prevista: Optional[datetime] = None
@@ -213,7 +217,7 @@ class OrcamentoCreate(BaseModel):
     itens: List[ItemOrcamentoCreate] = []
 
 
-class OrcamentoUpdate(BaseModel):
+class OrcamentoUpdate(PresentationFields):
     cliente_id: Optional[str] = None
     titulo: Optional[str] = None
     data_evento_prevista: Optional[datetime] = None
@@ -223,7 +227,7 @@ class OrcamentoUpdate(BaseModel):
     itens: Optional[List[ItemOrcamentoCreate]] = None
 
 
-class OrcamentoResponse(BaseModel):
+class OrcamentoResponse(PresentationFields):
     id: str
     cliente_id: str
     titulo: str
@@ -242,7 +246,7 @@ class OrcamentoResponse(BaseModel):
 # EFEITOS
 # ============================================================
 
-class EfeitoCreate(BaseModel):
+class EfeitoCreate(PresentationFields):
     nome: str
     prompt: str
     scene_file: Optional[str] = None
@@ -251,7 +255,7 @@ class EfeitoCreate(BaseModel):
     ordem: int = 0
 
 
-class EfeitoUpdate(BaseModel):
+class EfeitoUpdate(PresentationFields):
     nome: Optional[str] = None
     prompt: Optional[str] = None
     scene_file: Optional[str] = None
@@ -260,7 +264,8 @@ class EfeitoUpdate(BaseModel):
     ordem: Optional[int] = None
 
 
-class EfeitoResponse(BaseModel):
+class EfeitoResponse(PresentationFields):
+    usos: int = 0
     id: str
     nome: str
     prompt: str
@@ -277,7 +282,7 @@ class EfeitoResponse(BaseModel):
 # MOLDURAS
 # ============================================================
 
-class MolduraResponse(BaseModel):
+class MolduraResponse(PresentationFields):
     id: str
     nome: str
     arquivo_path: str

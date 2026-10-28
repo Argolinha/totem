@@ -1,8 +1,13 @@
+import {useSearchParams, useNavigate} from 'react-router-dom';
+import {adminApi, errorMessage} from './api';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Layout from "./layout";
 
 export default function AdicionarCliente() {
+  const [params]=useSearchParams();const id=params.get('id');const navigate=useNavigate();
+  const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+  const [ativo,setAtivo]=useState(true);
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
@@ -10,27 +15,18 @@ export default function AdicionarCliente() {
   const [data, setData] = useState("");
   const [valor, setValor] = useState("");
 
-  function salvarCliente(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!nome || !telefone || !email) {
-      alert("Preencha nome, telefone e e-mail.");
-      return;
-    }
-
-    alert("Cliente cadastrado com sucesso!");
-
-    setNome("");
-    setTelefone("");
-    setEmail("");
-    setEvento("");
-    setData("");
-    setValor("");
+  useEffect(()=>{if(id)adminApi.get('/clientes/'+id).then(({data:c})=>{setAtivo(c.ativo);setNome(c.nome);setTelefone(c.telefone||'');setEmail(c.email||'');setEvento(c.ui.evento||'');setData(c.ui.data||'');setValor(c.ui.valor||'');}).catch(e=>setError(errorMessage(e)));},[id]);
+  async function salvarCliente(e: React.FormEvent) {
+    e.preventDefault();if(busy)return;setBusy(true);setError('');
+    try {const payload={nome,telefone,email,ativo,ui:{evento,data,valor}};
+      if(id)await adminApi.put('/clientes/'+id,payload);else await adminApi.post('/clientes',payload);
+      navigate('/admin/clientes');
+    }catch(e){setError(errorMessage(e));}finally{setBusy(false);}
   }
 
   return (
     <Layout
-      title="Adicionar cliente"
+      title={id?"Editar cliente":"Adicionar cliente"}
       subtitle="Cadastre um novo cliente no sistema."
       currentPath="/clientes"
     >
@@ -38,9 +34,10 @@ export default function AdicionarCliente() {
         <div className="rounded-xl bg-white p-6 shadow-sm">
 
           <h2 className="mb-6 text-2xl font-bold text-gray-900">
-            Adicionar cliente
+            {id?"Editar cliente":"Adicionar cliente"}
           </h2>
 
+          {error && <p role="alert" className="mb-4 text-red-700">{error}</p>}
           <form
             onSubmit={salvarCliente}
             className="grid grid-cols-1 gap-5 md:grid-cols-2"
@@ -138,13 +135,15 @@ export default function AdicionarCliente() {
               />
             </div>
 
+            <label className="md:col-span-2 text-sm text-gray-700"><input type="checkbox" checked={ativo} onChange={e=>setAtivo(e.target.checked)} className="mr-2"/>Cliente ativo</label>
             <div className="flex gap-3 md:col-span-2">
 
               <button
                 type="submit"
+                disabled={busy}
                 className="rounded-lg bg-violet-600 px-6 py-3 font-semibold text-white hover:bg-violet-700"
               >
-                Salvar cliente
+                {busy?"Salvando…":"Salvar cliente"}
               </button>
 
               <button

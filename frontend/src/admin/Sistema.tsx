@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import {adminApi, errorMessage, Row} from './api';
+import {notify} from './data';
+import React, { useEffect, useState } from "react";
 import Layout from "./layout";
 import {
   Server,
@@ -16,25 +18,10 @@ export default function Sistema() {
   const [reiniciando, setReiniciando] = useState(false);
   const [reiniciado, setReiniciado] = useState(false);
 
-  const reiniciarSistema = () => {
-    const confirmar = window.confirm(
-      "Deseja realmente reiniciar o sistema?"
-    );
-
-    if (!confirmar) return;
-
-    setReiniciando(true);
-    setReiniciado(false);
-
-    setTimeout(() => {
-      setReiniciando(false);
-      setReiniciado(true);
-
-      setTimeout(() => {
-        setReiniciado(false);
-      }, 3000);
-    }, 2000);
-  };
+  const [info,setInfo]=useState<Row>({});
+  const atualizar=async()=>{setReiniciando(true);try{setInfo((await adminApi.get('/system')).data);setReiniciado(true);}catch(e){notify(errorMessage(e),true);}finally{setReiniciando(false);}};
+  useEffect(()=>{void atualizar();},[]);
+  const reiniciarSistema=()=>{void atualizar();};
 
   return (
     <Layout title="07. SISTEMA" currentPath="/sistema">
@@ -75,7 +62,7 @@ export default function Sistema() {
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-50 text-green-600">
             <CheckCircle size={18} />
             <span className="text-sm font-semibold">
-              Sistema operacional
+              {info.totem_id?"API conectada":"Verificando API"}
             </span>
           </div>
         </div>
@@ -95,7 +82,7 @@ export default function Sistema() {
 
               <div>
                 <h3 className="font-bold text-gray-900">
-                  Internet
+                  API
                 </h3>
 
                 <p className="text-xs text-gray-500">
@@ -106,7 +93,7 @@ export default function Sistema() {
 
             <span className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
               <span className="w-2 h-2 rounded-full bg-green-500" />
-              Conectado
+              {info.totem_id?"Conectado":"Não confirmado"}
             </span>
           </div>
         </div>
@@ -134,7 +121,7 @@ export default function Sistema() {
 
             <span className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
               <span className="w-2 h-2 rounded-full bg-green-500" />
-              Online
+              {info.totem_id?"API online":"Não confirmado"}
             </span>
           </div>
         </div>
@@ -162,7 +149,7 @@ export default function Sistema() {
 
             <span className="flex items-center gap-1.5 text-xs font-semibold text-green-600">
               <span className="w-2 h-2 rounded-full bg-green-500" />
-              Pronta
+              Não monitorada
             </span>
           </div>
         </div>
@@ -189,7 +176,7 @@ export default function Sistema() {
             </div>
 
             <span className="text-xs font-semibold text-green-600">
-              Normal
+              {info.disco_percentual!==undefined?`${info.disco_percentual}% utilizado`:"Verificando"}
             </span>
           </div>
         </div>
@@ -243,7 +230,7 @@ export default function Sistema() {
             </p>
 
             <p className="text-sm font-semibold text-gray-800">
-              Produção
+              {info.provedor_ia?`IA: ${info.provedor_ia}`:"Não informado"}
             </p>
           </div>
 
@@ -253,7 +240,7 @@ export default function Sistema() {
             </p>
 
             <p className="text-sm font-semibold text-green-600">
-              Operacional
+              {info.totem_id?"API operacional":"Não confirmado"}
             </p>
           </div>
         </div>
@@ -284,11 +271,11 @@ export default function Sistema() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
             <div>
               <p className="text-sm font-semibold text-gray-800">
-                Reiniciar sistema
+                Atualizar informações
               </p>
 
               <p className="text-xs text-gray-500 mt-1">
-                Reinicia os serviços da aplicação.
+                Consulta os dados atuais do servidor.
               </p>
             </div>
 
@@ -304,15 +291,15 @@ export default function Sistema() {
               />
 
               {reiniciando
-                ? "Reiniciando..."
-                : "Reiniciar sistema"}
+                ? "Atualizando..."
+                : "Atualizar informações"}
             </button>
           </div>
 
           {reiniciado && (
             <div className="mt-5 flex items-center gap-2 px-4 py-3 rounded-lg bg-green-50 text-green-600 text-sm font-medium">
               <CheckCircle size={18} />
-              Sistema reiniciado com sucesso!
+              Informações atualizadas.
             </div>
           )}
 
@@ -324,9 +311,7 @@ export default function Sistema() {
               />
 
               <p className="text-xs text-gray-500 leading-relaxed">
-                O reinício acima é apenas uma simulação nesta versão
-                do painel. Quando conectarmos o backend, ele poderá
-                reiniciar os serviços reais do photobooth.
+                Reinício e desligamento do host requerem controle do sistema operacional e não estão disponíveis neste painel.
               </p>
             </div>
           </div>

@@ -1,3 +1,5 @@
+import {useRecords, DataState, perform, dateBR, money} from './data';
+import {adminApi} from './api';
 
 import { useState } from "react";
 import Layout from "./layout";
@@ -15,7 +17,7 @@ import {
 } from "lucide-react";
 
 interface Cliente {
-  id: number;
+  id: string;
   nome: string;
   telefone: string;
   email: string;
@@ -25,47 +27,16 @@ interface Cliente {
   status: string;
 }
 
-const clientesIniciais: Cliente[] = [
-  {
-    id: 1,
-    nome: "Ana Paula",
-    telefone: "(27) 99912-3456",
-    email: "ana.paula@email.com",
-    evento: "Casamento",
-    data: "20/10/2026",
-    valor: "R$ 2.500,00",
-    status: "Orçamento enviado",
-  },
-  {
-    id: 2,
-    nome: "Empresa XPTO",
-    telefone: "(27) 98876-5432",
-    email: "contato@xpto.com.br",
-    evento: "Corporativo",
-    data: "15/11/2026",
-    valor: "R$ 4.000,00",
-    status: "Fechado",
-  },
-  {
-    id: 3,
-    nome: "Mariana Silva",
-    telefone: "(27) 99765-4321",
-    email: "mariana@email.com",
-    evento: "Aniversário",
-    data: "05/12/2026",
-    valor: "R$ 1.800,00",
-    status: "Em negociação",
-  },
-];
+
 
 export default function Clientes() {
-  const [clientes, setClientes] = useState<Cliente[]>(
-    clientesIniciais
-  );
+  const {rows,reload,loading,error}=useRecords('clientes');
+  const quotes=useRecords('orcamentos');
+  const clientes: Cliente[]=rows.map(c=>{const quote=quotes.rows.find(q=>q.cliente_id===c.id);return {id:c.id,nome:c.nome,telefone:c.telefone||'',email:c.email||'',evento:quote?.ui.tipo||c.ui.evento||'A definir',data:quote?.data_evento_prevista?dateBR(quote.data_evento_prevista):c.ui.data?dateBR(c.ui.data):'A definir',valor:quote?money(quote.valor_total):c.ui.valor?money(Number(c.ui.valor)):'A definir',status:!c.ativo?'Inativo':quote?(['aprovado','convertido'].includes(quote.status)?'Fechado':quote.status==='enviado'?'Orçamento enviado':'Em negociação'):c.ui.status||'Em negociação'};});
 
   const [busca, setBusca] = useState("");
   const [filtroStatus, setFiltroStatus] = useState("Todos");
-  const [menuAberto, setMenuAberto] = useState<number | null>(null);
+  const [menuAberto, setMenuAberto] = useState<string | null>(null);
 
   const clientesFiltrados = clientes.filter((cliente) => {
     const texto = busca.toLowerCase();
@@ -82,18 +53,8 @@ export default function Clientes() {
     return correspondeBusca && correspondeStatus;
   });
 
-  function excluirCliente(id: number) {
-    const confirmar = window.confirm(
-      "Deseja realmente excluir este cliente?"
-    );
-
-    if (confirmar) {
-      setClientes((atual) =>
-        atual.filter((cliente) => cliente.id !== id)
-      );
-    }
-
-    setMenuAberto(null);
+  function excluirCliente(id: string) {
+    if(window.confirm('Deseja realmente excluir este cliente?')) void perform(()=>adminApi.delete('/clientes/'+id),()=>{void reload();setMenuAberto(null);});
   }
 
   function statusClasse(status: string) {
@@ -114,6 +75,7 @@ export default function Clientes() {
       subtitle="Gerencie seus clientes e acompanhe seus eventos."
       currentPath="/admin/clientes"
     >
+      <DataState loading={loading} error={error} count={clientes.length} />
       <div className="space-y-6">
 
         {/* CABEÇALHO */}
@@ -379,7 +341,7 @@ export default function Clientes() {
                           <button
                             type="button"
                             onClick={() => {
-                              alert("Edição será adicionada em breve.");
+                              window.location.assign(`/admin/clientes/adicionar?id=${cliente.id}`);
                               setMenuAberto(null);
                             }}
                             className="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"

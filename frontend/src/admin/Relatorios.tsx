@@ -1,8 +1,9 @@
+import {useRecords, DataState} from './data';
 import { useMemo, useState } from "react";
 import Layout from "./layout";
 
 interface RelatorioEvento {
-  id: number;
+  id: string;
   evento: string;
   data: string;
   fotos: number;
@@ -11,57 +12,12 @@ interface RelatorioEvento {
   status: "Concluído" | "Em andamento";
 }
 
-const dadosIniciais: RelatorioEvento[] = [
-  {
-    id: 1,
-    evento: "Casamento Ana & Lucas",
-    data: "10/09/2026",
-    fotos: 248,
-    impressoes: 198,
-    efeitos: 86,
-    status: "Concluído",
-  },
-  {
-    id: 2,
-    evento: "Aniversário 15 anos",
-    data: "07/09/2026",
-    fotos: 186,
-    impressoes: 151,
-    efeitos: 64,
-    status: "Concluído",
-  },
-  {
-    id: 3,
-    evento: "Evento Corporativo",
-    data: "03/09/2026",
-    fotos: 312,
-    impressoes: 276,
-    efeitos: 109,
-    status: "Concluído",
-  },
-  {
-    id: 4,
-    evento: "Festa de Formatura",
-    data: "30/08/2026",
-    fotos: 174,
-    impressoes: 143,
-    efeitos: 51,
-    status: "Concluído",
-  },
-  {
-    id: 5,
-    evento: "Festival de Verão",
-    data: "25/08/2026",
-    fotos: 421,
-    impressoes: 367,
-    efeitos: 182,
-    status: "Em andamento",
-  },
-];
+
 
 export default function Relatorios() {
   const [periodo, setPeriodo] = useState("30");
-  const [dados] = useState<RelatorioEvento[]>(dadosIniciais);
+  const {rows,reload,loading,error}=useRecords('reports/events?days='+periodo);
+  const dados=rows as RelatorioEvento[];
   const [exportando, setExportando] = useState(false);
 
   const totais = useMemo(() => {
@@ -101,7 +57,7 @@ export default function Relatorios() {
       const linhas = dados
         .map(
           (item) =>
-            `"${item.evento}",${item.data},${item.fotos},${item.impressoes},${item.efeitos},"${item.status}"`
+            `"${item.evento.replace(/"/g,'""')}",${item.data},${item.fotos},${item.impressoes},${item.efeitos},"${item.status}"`
         )
         .join("\n");
 
@@ -126,6 +82,7 @@ export default function Relatorios() {
 
   return (
     <Layout title="05. RELATÓRIOS" currentPath="/relatorios">
+      <DataState loading={loading} error={error} count={dados.length}/>
       <div
         style={{
           display: "flex",

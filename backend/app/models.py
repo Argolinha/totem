@@ -24,6 +24,34 @@ def gen_uuid() -> str:
     return str(uuid.uuid4())
 
 
+class AdminPresentation(Base):
+    __tablename__ = "admin_presentation"
+    key = Column(String, primary_key=True)
+    data = Column(JSON, nullable=False, default=dict)
+
+
+class PresentationMixin:
+    @property
+    def ui(self):
+        from sqlalchemy.orm import object_session
+        db = object_session(self)
+        row = db.get(AdminPresentation, f"{self.__tablename__}:{self.id}") if db else None
+        return row.data if row else {}
+
+
+def save_presentation(db, record, values):
+    if values is None:
+        return
+    if not record.id:
+        record.id = gen_uuid()
+    key = f"{record.__tablename__}:{record.id}"
+    row = db.get(AdminPresentation, key)
+    if not row:
+        row = AdminPresentation(key=key)
+        db.add(row)
+    row.data = {**(row.data or {}), **values}
+
+
 # ============================================================
 # ENUMS
 # ============================================================
@@ -89,7 +117,7 @@ class AdminUser(Base):
 # CLIENTES
 # ============================================================
 
-class Cliente(Base):
+class Cliente(PresentationMixin, Base):
     __tablename__ = "clientes"
 
     id = Column(String, primary_key=True, default=gen_uuid)
@@ -129,7 +157,7 @@ class Cliente(Base):
 # EVENTOS
 # ============================================================
 
-class Evento(Base):
+class Evento(PresentationMixin, Base):
     __tablename__ = "eventos"
 
     id = Column(String, primary_key=True, default=gen_uuid)
@@ -195,7 +223,7 @@ class Evento(Base):
 # ORÇAMENTOS
 # ============================================================
 
-class Orcamento(Base):
+class Orcamento(PresentationMixin, Base):
     __tablename__ = "orcamentos"
 
     id = Column(String, primary_key=True, default=gen_uuid)
@@ -275,7 +303,15 @@ class ItemOrcamento(Base):
 # EFEITOS DE IA
 # ============================================================
 
-class Efeito(Base):
+class Efeito(PresentationMixin, Base):
+    @property
+    def usos(self):
+        from sqlalchemy.orm import object_session
+        db = object_session(self)
+        if db is None:
+            return 0
+        return sum((p.effect_names or []).count(self.nome) for p in db.query(Photo).all())
+
     __tablename__ = "efeitos"
 
     id = Column(String, primary_key=True, default=gen_uuid)
@@ -314,7 +350,7 @@ class Efeito(Base):
 # MOLDURAS
 # ============================================================
 
-class Moldura(Base):
+class Moldura(PresentationMixin, Base):
     __tablename__ = "molduras"
 
     id = Column(String, primary_key=True, default=gen_uuid)

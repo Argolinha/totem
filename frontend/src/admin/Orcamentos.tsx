@@ -1,3 +1,5 @@
+import {useRecords, Feedback, useAdminUser, DataState, perform, Editor, dateBR, dateISO, numberBR, money, notify} from './data';
+import {adminApi, Row} from './api';
 
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -20,7 +22,7 @@ import {
 import Layout from "./layout";
 
 type Orcamento = {
-  id: number;
+  id: string;
   nome: string;
   tipo: string;
   valor: string;
@@ -41,241 +43,11 @@ type Coluna = {
   orcamentos: Orcamento[];
 };
 
-const colunasIniciais: Coluna[] = [
-  {
-    id: "novos",
-    titulo: "Novos",
-    quantidade: 5,
-    valorTotal: "R$ 9.800",
-    cor: "#7C3AED",
-    fundo: "#F5F0FF",
-    icon: <FileText size={18} />,
-    orcamentos: [
-      {
-        id: 1,
-        nome: "João Lucas",
-        tipo: "Aniversário",
-        valor: "R$ 1.800",
-        data: "10/11/2026",
-        convidados: "120 convidados",
-        cor: "#B9A7F5",
-        inicial: "J",
-      },
-      {
-        id: 2,
-        nome: "Camila Reis",
-        tipo: "Aniversário",
-        valor: "R$ 2.200",
-        data: "20/11/2026",
-        convidados: "100 convidados",
-        cor: "#F45D91",
-        inicial: "C",
-      },
-      {
-        id: 3,
-        nome: "Lucas Almeida",
-        tipo: "Formatura",
-        valor: "R$ 2.800",
-        data: "18/12/2026",
-        convidados: "200 convidados",
-        cor: "#4799ED",
-        inicial: "L",
-      },
-      {
-        id: 4,
-        nome: "Ana Beatriz",
-        tipo: "15 anos",
-        valor: "R$ 2.800",
-        data: "25/11/2026",
-        convidados: "150 convidados",
-        cor: "#974DE8",
-        inicial: "A",
-      },
-      {
-        id: 5,
-        nome: "Empresa Prime",
-        tipo: "Corporativo",
-        valor: "R$ 3.500",
-        data: "30/11/2026",
-        convidados: "250 convidados",
-        cor: "#41BC91",
-        inicial: "E",
-      },
-    ],
-  },
-  {
-    id: "enviados",
-    titulo: "Orçamento enviado",
-    quantidade: 7,
-    valorTotal: "R$ 18.500",
-    cor: "#3B82F6",
-    fundo: "#EEF5FF",
-    icon: <Clock3 size={18} />,
-    orcamentos: [
-      {
-        id: 6,
-        nome: "Ana Paula",
-        tipo: "Casamento",
-        valor: "R$ 2.500",
-        data: "18/10/2026",
-        convidados: "180 convidados",
-        cor: "#EF8C96",
-        inicial: "A",
-      },
-      {
-        id: 7,
-        nome: "Mariana Silva",
-        tipo: "15 anos",
-        valor: "R$ 2.800",
-        data: "22/11/2026",
-        convidados: "150 convidados",
-        cor: "#A98AF4",
-        inicial: "M",
-      },
-      {
-        id: 8,
-        nome: "Cerimonial Belle",
-        tipo: "Casamento",
-        valor: "R$ 3.200",
-        data: "15/03/2027",
-        convidados: "190 convidados",
-        cor: "#438EEA",
-        inicial: "C",
-      },
-      {
-        id: 9,
-        nome: "Juliana Mendes",
-        tipo: "Aniversário",
-        valor: "R$ 2.200",
-        data: "28/11/2026",
-        convidados: "120 convidados",
-        cor: "#F45DAB",
-        inicial: "J",
-      },
-      {
-        id: 10,
-        nome: "Restaurante Five",
-        tipo: "Corporativo",
-        valor: "R$ 4.000",
-        data: "05/12/2026",
-        convidados: "300 convidados",
-        cor: "#65C89C",
-        inicial: "R",
-      },
-    ],
-  },
-  {
-    id: "negociacao",
-    titulo: "Em negociação",
-    quantidade: 8,
-    valorTotal: "R$ 8.200",
-    cor: "#E8A514",
-    fundo: "#FFF9E8",
-    icon: <Clock3 size={18} />,
-    orcamentos: [
-      {
-        id: 11,
-        nome: "Empresa XPTO",
-        tipo: "Corporativo",
-        valor: "R$ 4.000",
-        data: "05/12/2026",
-        convidados: "250 convidados",
-        cor: "#65A9EA",
-        inicial: "E",
-      },
-      {
-        id: 12,
-        nome: "Buffet Z",
-        tipo: "Corporativo",
-        valor: "R$ 2.000",
-        data: "08/11/2026",
-        convidados: "200 convidados",
-        cor: "#F45D91",
-        inicial: "B",
-      },
-      {
-        id: 13,
-        nome: "Formatura UVV",
-        tipo: "Formatura",
-        valor: "R$ 3.500",
-        data: "12/12/2026",
-        convidados: "300 convidados",
-        cor: "#8B5CF6",
-        inicial: "F",
-      },
-      {
-        id: 14,
-        nome: "Evento Tech",
-        tipo: "Corporativo",
-        valor: "R$ 2.900",
-        data: "18/10/2026",
-        convidados: "150 convidados",
-        cor: "#65C89C",
-        inicial: "E",
-      },
-    ],
-  },
-  {
-    id: "fechados",
-    titulo: "Fechados",
-    quantidade: 11,
-    valorTotal: "R$ 14.900",
-    cor: "#21B77D",
-    fundo: "#EDFFF7",
-    icon: <CheckCircle2 size={18} />,
-    orcamentos: [
-      {
-        id: 15,
-        nome: "Casamento Ana + Pedro",
-        tipo: "Casamento",
-        valor: "R$ 2.500",
-        data: "18/10/2026",
-        convidados: "180 convidados",
-        cor: "#9C73E9",
-        inicial: "A",
-      },
-      {
-        id: 16,
-        nome: "Juliana e André",
-        tipo: "Casamento",
-        valor: "R$ 3.000",
-        data: "30/11/2026",
-        convidados: "200 convidados",
-        cor: "#F24A9D",
-        inicial: "J",
-      },
-      {
-        id: 17,
-        nome: "Empresa Viva",
-        tipo: "Corporativo",
-        valor: "R$ 4.000",
-        data: "05/12/2026",
-        convidados: "250 convidados",
-        cor: "#4B9BEA",
-        inicial: "E",
-      },
-      {
-        id: 18,
-        nome: "Larissa e Pedro",
-        tipo: "Casamento",
-        valor: "R$ 3.500",
-        data: "14/02/2027",
-        convidados: "200 convidados",
-        cor: "#8B5CF6",
-        inicial: "L",
-      },
-      {
-        id: 19,
-        nome: "Aniversário Maria",
-        tipo: "Aniversário",
-        valor: "R$ 1.900",
-        data: "10/11/2026",
-        convidados: "120 convidados",
-        cor: "#F45D91",
-        inicial: "M",
-      },
-    ],
-  },
+const etapas = [
+ {id:'novos',titulo:'Novos',cor:'#7C3AED',fundo:'#F5F0FF',icon:<FileText size={18}/>},
+ {id:'enviados',titulo:'Orçamento enviado',cor:'#3B82F6',fundo:'#EEF5FF',icon:<Clock3 size={18}/>},
+ {id:'negociacao',titulo:'Em negociação',cor:'#E8A514',fundo:'#FFF9E8',icon:<Clock3 size={18}/>},
+ {id:'fechados',titulo:'Fechados',cor:'#21B77D',fundo:'#E5FAF1',icon:<CheckCircle2 size={18}/>},
 ];
 
 function CardResumo({
@@ -331,10 +103,10 @@ function ItemOrcamento({
   onDelete,
 }: {
   item: Orcamento;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void;
 }) {
   return (
-    <div className="group rounded-lg border border-[#E8EAF2] bg-white px-3 py-3 shadow-sm transition hover:border-[#D3D4E5]">
+    <div draggable onDragStart={e=>e.dataTransfer.setData("text/plain",item.id)} className="group rounded-lg border border-[#E8EAF2] bg-white px-3 py-3 shadow-sm transition hover:border-[#D3D4E5]">
       <div className="flex items-start gap-2">
         <div
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-medium text-white"
@@ -372,7 +144,7 @@ function ItemOrcamento({
             <button
               type="button"
               onClick={() => onDelete(item.id)}
-              title="Excluir orçamento"
+              title="Ações do orçamento" aria-label={`Ações de ${item.nome}`}
               className="rounded p-1 text-[#A1A5B5] hover:bg-[#F3F3F8]"
             >
               <MoreHorizontal size={13} />
@@ -386,13 +158,13 @@ function ItemOrcamento({
 
 function ColunaFunil({
   coluna,
-  onDelete,
+  onDelete, onMove,
 }: {
   coluna: Coluna;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void; onMove:(id:string,stage:string)=>void;
 }) {
   return (
-    <div
+    <div onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();onMove(e.dataTransfer.getData("text/plain"),coluna.id);}}
       className="flex min-w-0 flex-col rounded-xl p-2.5"
       style={{ backgroundColor: coluna.fundo }}
     >
@@ -424,38 +196,20 @@ function ColunaFunil({
         ))}
       </div>
 
-      {coluna.id === "novos" && (
-        <button
-          type="button"
-          className="mt-3 px-1 text-left text-[10px] font-semibold text-[#6B728D] hover:text-[#6937DF]"
-        >
-          + Ver mais 2 orçamentos
-        </button>
-      )}
-
-      {coluna.id === "enviados" && (
-        <button
-          type="button"
-          className="mt-3 px-1 text-left text-[10px] font-semibold text-[#6B728D] hover:text-[#6937DF]"
-        >
-          + Ver mais 2 orçamentos
-        </button>
-      )}
-
-      {coluna.id === "fechados" && (
-        <button
-          type="button"
-          className="mt-3 px-1 text-left text-[10px] font-semibold text-[#6B728D] hover:text-[#6937DF]"
-        >
-          + Ver mais 6 orçamentos
-        </button>
-      )}
     </div>
   );
 }
 
 export default function Orcamentos() {
-  const [colunas, setColunas] = useState<Coluna[]>(colunasIniciais);
+  const user=useAdminUser();
+  const {rows,reload,loading,error}=useRecords('orcamentos');const crm=useRecords('clientes');
+  const [editor,setEditor]=useState<Row|null>(null);
+  const allStages=rows.some(r=>r.status==='recusado')?[...etapas,{id:'perdidos',titulo:'Perdidos',cor:'#EF5B67',fundo:'#FFF0F1',icon:<XCircle size={18}/>}]:etapas;
+  const stageOf=(r:Row)=>r.status==='recusado'?'perdidos':['aprovado','convertido'].includes(r.status)?'fechados':r.ui.stage|| (r.status==='enviado'?'enviados':'novos');
+  const colunas:Coluna[]=allStages.map(stage=>{const records=rows.filter(r=>stageOf(r)===stage.id);return {...stage,quantidade:records.length,valorTotal:money(records.reduce((n,r)=>n+r.valor_total,0)),orcamentos:records.map(r=>({id:r.id,nome:crm.rows.find(c=>c.id===r.cliente_id)?.nome||r.titulo,tipo:r.ui.tipo||r.titulo,valor:money(r.valor_total),data:dateBR(r.data_evento_prevista),convidados:r.ui.convidados?`${r.ui.convidados} convidados`:'Não informado',cor:stage.cor,inicial:(crm.rows.find(c=>c.id===r.cliente_id)?.nome||r.titulo).charAt(0).toUpperCase()}))};});
+  function moveQuote(id:string,stage:string){const row=rows.find(r=>r.id===id);if(!row)return;if(row.status==='convertido'){notify('O orçamento já foi convertido em evento.',true);return;}void perform(()=>adminApi.put('/orcamentos/'+id,{status:stage==='fechados'?'aprovado':stage==='perdidos'?'recusado':stage==='novos'?'rascunho':'enviado',ui:{stage}}),()=>{void reload();});}
+  async function saveQuote(v:Row){const row=rows.find(r=>r.id===v.id)!;const old=row.valor_total;const value=numberBR(String(v.valor));if(!Number.isFinite(value)||value<0)throw new Error('Valor inválido.');const payload:Row={titulo:v.titulo,status:v.status,data_evento_prevista:dateISO(v.data),ui:{tipo:v.tipo,convidados:v.convidados,stage:v.stage}};if(value!==old)payload.itens=[{descricao:v.tipo||v.titulo,quantidade:1,valor_unitario:value}];await adminApi.put('/orcamentos/'+v.id,payload);await reload();}
+
   const [busca, setBusca] = useState("");
   const [modoVisualizacao, setModoVisualizacao] = useState<
     "colunas" | "lista"
@@ -469,55 +223,14 @@ export default function Orcamentos() {
   const [novoData, setNovoData] = useState("");
   const [novoConvidados, setNovoConvidados] = useState("");
 
-  const excluirOrcamento = (id: number) => {
-    setColunas((atual) =>
-      atual.map((coluna) => ({
-        ...coluna,
-        orcamentos: coluna.orcamentos.filter(
-          (item) => item.id !== id
-        ),
-      }))
-    );
-  };
-
-  const criarOrcamento = () => {
-    if (!novoNome.trim() || !novoValor.trim()) {
-      alert("Preencha o nome e o valor do orçamento.");
-      return;
-    }
-
-    const novo: Orcamento = {
-      id: Date.now(),
-      nome: novoNome,
-      tipo: novoTipo,
-      valor: novoValor.startsWith("R$")
-        ? novoValor
-        : `R$ ${novoValor}`,
-      data: novoData || "A definir",
-      convidados: novoConvidados
-        ? `${novoConvidados} convidados`
-        : "A definir",
-      cor: "#8B5CF6",
-      inicial: novoNome.trim().charAt(0).toUpperCase(),
-    };
-
-    setColunas((atual) =>
-      atual.map((coluna) =>
-        coluna.id === "novos"
-          ? {
-              ...coluna,
-              quantidade: coluna.quantidade + 1,
-              orcamentos: [novo, ...coluna.orcamentos],
-            }
-          : coluna
-      )
-    );
-
-    setNovoNome("");
-    setNovoValor("");
-    setNovoData("");
-    setNovoConvidados("");
-    setMostrarFormulario(false);
+  const excluirOrcamento=(id:string)=>{const row=rows.find(r=>r.id===id);if(row)setEditor({...row,valor:String(row.valor_total),data:row.data_evento_prevista?.slice(0,10)||'',tipo:row.ui.tipo||row.titulo,convidados:row.ui.convidados||'',stage:stageOf(row)});};
+  const [saving,setSaving]=useState(false);
+  const criarOrcamento=async()=>{
+    const customer=crm.rows.find(c=>c.nome.toLowerCase()===novoNome.trim().toLowerCase());
+    const amount=numberBR(novoValor);
+    if(!customer||!novoValor.trim()||!Number.isFinite(amount)||amount<0){notify('Selecione um cliente cadastrado e informe um valor válido.',true);return;}if(saving)return;setSaving(true);
+    const ok=await perform(()=>adminApi.post('/orcamentos',{cliente_id:customer.id,titulo:novoTipo+' - '+customer.nome,data_evento_prevista:dateISO(novoData),itens:[{descricao:novoTipo,quantidade:1,valor_unitario:amount}],ui:{tipo:novoTipo,convidados:novoConvidados,stage:'novos'}}),()=>{void reload();});
+    if(ok){setMostrarFormulario(false);setNovoNome('');setNovoValor('');setNovoData('');setNovoConvidados('');}setSaving(false);
   };
 
   const colunasFiltradas = colunas.map((coluna) => ({
@@ -554,6 +267,9 @@ export default function Orcamentos() {
       title="02. ORÇAMENTOS"
       currentPath="/orcamentos"
     >
+      <DataState loading={loading||crm.loading} error={error||crm.error} count={rows.length}/>
+      <datalist id="quote-clients">{crm.rows.map(c=><option key={c.id} value={c.nome}/>)}</datalist>
+      {editor&&<Editor title="Editar orçamento" initial={editor} fields={[{name:'titulo',label:'Título',required:true},{name:'tipo',label:'Tipo'},{name:'valor',label:'Valor total (R$)',required:true},{name:'data',label:'Data prevista',type:'date'},{name:'convidados',label:'Convidados',type:'number'},{name:'status',label:'Status',options:editor.status==='convertido'?['convertido']:['rascunho','enviado','aprovado','recusado']},{name:'stage',label:'Etapa do funil',options:['novos','enviados','negociacao','fechados','perdidos']}]} onSave={saveQuote} onClose={()=>setEditor(null)}><div className="flex gap-3">{editor.status==='aprovado'&&<button type="button" className="px-3 py-2 border rounded-lg text-vive-primary" onClick={()=>{void perform(()=>adminApi.post('/orcamentos/'+editor.id+'/converter-em-evento'),()=>{setEditor(null);void reload();notify('Evento criado.');});}}>Converter em evento</button>}<button type="button" className="px-3 py-2 border rounded-lg text-red-700" onClick={()=>{if(window.confirm('Excluir este orçamento?'))void perform(()=>adminApi.delete('/orcamentos/'+editor.id),()=>{setEditor(null);void reload();});}}>Excluir orçamento</button></div></Editor>}
       <div className="min-h-screen bg-[#F8F9FC] text-[#292D42]">
         {/* CABEÇALHO */}
         <header className="border-b border-[#E9EAF2] bg-white px-5 py-4 sm:px-7 lg:px-8">
@@ -591,7 +307,7 @@ export default function Orcamentos() {
 
               <button
                 type="button"
-                title="Notificações"
+                title="Atualizar orçamentos" onClick={()=>{void reload();}}
                 className="relative rounded-lg p-2 text-[#35394D] hover:bg-[#F4F3FA]"
               >
                 <Bell size={19} />
@@ -605,16 +321,16 @@ export default function Orcamentos() {
                 className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-[#F6F5FB]"
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#6D36DF] text-sm font-medium text-white">
-                  L
+                  {user.nome.charAt(0)}
                 </div>
 
                 <div className="hidden text-left sm:block">
                   <p className="text-[11px] font-bold leading-4 text-[#303449]">
-                    Larissa
+                    {user.nome}
                   </p>
 
                   <p className="text-[9px] text-[#8B91A5]">
-                    Administradora
+                    {user.role}
                   </p>
                 </div>
 
@@ -646,9 +362,9 @@ export default function Orcamentos() {
               <CardResumo
                 icon={<FileText size={20} />}
                 titulo="Orçamentos no total"
-                valor="28"
-                descricao="este mês"
-                crescimento="↑ +12%"
+                valor={String(rows.length)}
+                descricao="no total"
+                crescimento=""
                 cor="#7139E7"
                 fundo="#F0EAFE"
               />
@@ -656,9 +372,9 @@ export default function Orcamentos() {
               <CardResumo
                 icon={<Clock3 size={20} />}
                 titulo="Em negociação"
-                valor="7"
-                descricao="em relação ao mês anterior"
-                crescimento="↑ +3%"
+                valor={String(rows.filter(r=>stageOf(r)==="negociacao").length)}
+                descricao="no total"
+                crescimento=""
                 cor="#E9A51B"
                 fundo="#FFF5DC"
               />
@@ -666,9 +382,9 @@ export default function Orcamentos() {
               <CardResumo
                 icon={<CheckCircle2 size={20} />}
                 titulo="Fechados"
-                valor="11"
-                descricao="este mês"
-                crescimento="↑ +25%"
+                valor={String(rows.filter(r=>["aprovado","convertido"].includes(r.status)).length)}
+                descricao="no total"
+                crescimento=""
                 cor="#21B77D"
                 fundo="#E5FAF1"
               />
@@ -676,9 +392,9 @@ export default function Orcamentos() {
               <CardResumo
                 icon={<XCircle size={20} />}
                 titulo="Perdidos"
-                valor="5"
-                descricao="em relação ao mês anterior"
-                crescimento="↑ +8%"
+                valor={String(rows.filter(r=>r.status==="recusado").length)}
+                descricao="no total"
+                crescimento=""
                 cor="#EF5B67"
                 fundo="#FFF0F1"
               />
@@ -760,7 +476,7 @@ export default function Orcamentos() {
                   <ColunaFunil
                     key={coluna.id}
                     coluna={coluna}
-                    onDelete={excluirOrcamento}
+                    onDelete={excluirOrcamento} onMove={moveQuote}
                   />
                 ))}
               </div>
@@ -836,6 +552,7 @@ export default function Orcamentos() {
         {mostrarFormulario && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#202038]/40 px-4 py-6 backdrop-blur-sm">
             <div className="w-full max-w-[430px] rounded-2xl bg-white p-6 shadow-2xl">
+              <Feedback/>
               <div className="mb-5 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-[#292D42]">
@@ -863,7 +580,7 @@ export default function Orcamentos() {
                   </label>
 
                   <input
-                    value={novoNome}
+                    list="quote-clients" value={novoNome}
                     onChange={(e) => setNovoNome(e.target.value)}
                     placeholder="Ex.: João Lucas"
                     className="h-10 w-full rounded-lg border border-[#E1E3ED] px-3 text-sm outline-none focus:border-[#8B5CF6]"
@@ -941,7 +658,7 @@ export default function Orcamentos() {
 
                 <button
                   type="button"
-                  onClick={criarOrcamento}
+                  disabled={saving} onClick={criarOrcamento}
                   className="h-10 flex-1 rounded-lg bg-[#6B32E8] text-sm font-semibold text-white hover:bg-[#5923CE]"
                 >
                   Criar orçamento
